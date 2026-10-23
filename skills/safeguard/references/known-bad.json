@@ -1,0 +1,31 @@
+{
+  "_comment": "Small, illustrative list of package versions publicly reported as malicious in 2026. It is NOT complete. Use an online advisory tool (npm audit, pip-audit, composer audit, osv-scanner) with the user's consent for full coverage. Add entries as new incidents are reported. versions: [\"*\"] means every version of that name is malicious.",
+  "updated": "2026-10-23",
+  "npm": [],
+  "pypi": [
+    { "name": "litellm", "versions": ["1.82.7", "1.82.8", "1.107.0"], "note": "TeamPCP compromise; .pth credential stealer (Mar 24 and Oct 21, 2026)" },
+    { "name": "pantheon-agents", "versions": ["0.6.1", "0.6.2"], "note": "Hades campaign, GHSA-93qj-5q5v-3c2h" },
+    { "name": "rlask", "versions": ["*"], "note": "Typosquat of flask (Jun 2026)" },
+    { "name": "tlask", "versions": ["*"], "note": "Typosquat of flask (Jun 2026)" },
+    { "name": "rsquests", "versions": ["*"], "note": "Typosquat of requests (Jun 2026)" },
+    { "name": "nhmpy", "versions": ["*"], "note": "Typosquat of numpy (Jun 2026)" }
+  ],
+  "composer": [
+    { "name": "intercom/intercom-php", "versions": ["5.0.2"], "note": "Overwritten release turned into a Composer plugin stealer (Apr 30, 2026)" }
+  ],
+  "cargo": [
+    { "name": "chrono_anchor", "versions": ["*"], "note": "Malicious crate (Feb-Mar 2026)" },
+    { "name": "time_calibrator", "versions": ["*"], "note": "Malicious crate (Feb-Mar 2026)" }
+  ],
+  "rubygems": [],
+  "go": [],
+  "nuget": [],
+  "maven": [],
+  "popular": {
+    "npm": ["react", "express", "lodash", "axios", "chalk", "commander", "debug", "dotenv", "next", "vue", "typescript", "webpack", "eslint", "jest", "moment", "request", "mongoose", "socket.io", "cors", "uuid"],
+    "pypi": ["requests", "flask", "django", "numpy", "pandas", "urllib3", "boto3", "setuptools", "pyyaml", "cryptography", "pillow", "scipy", "matplotlib", "fastapi", "pydantic", "openai", "anthropic", "litellm", "langchain", "colorama", "beautifulsoup4", "selenium", "tensorflow", "torch"],
+    "composer": ["laravel/framework", "symfony/console", "guzzlehttp/guzzle", "monolog/monolog", "phpunit/phpunit"],
+    "rubygems": ["rails", "activesupport", "nokogiri", "rack", "rspec"],
+    "cargo": ["serde", "tokio", "chrono", "rand", "clap", "reqwest"]
+  }
+}

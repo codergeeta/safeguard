@@ -1,0 +1,12 @@
+{
+  "name": "codergeeta",
+  "owner": { "name": "codergeeta" },
+  "description": "Plugins by codergeeta",
+  "plugins": [
+    {
+      "name": "safeguard",
+      "source": ".",
+      "description": "Protect yourself and your code from 2026-era scams, account takeover, infostealers, and supply-chain attacks, with visual offline reports."
+    }
+  ]
+}

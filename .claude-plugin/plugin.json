@@ -1,0 +1,10 @@
+{
+  "name": "safeguard",
+  "version": "1.0.0",
+  "description": "Cyber-safety skill built on 2026 attack trends: scam and phishing checks, account checkups, AI-agent and dependency audits across npm, PyPI, Composer/WordPress, Ruby, Go, Rust, Java, .NET, Docker and GitHub Actions, plus visual offline reports and incident-response playbooks.",
+  "author": { "name": "codergeeta" },
+  "homepage": "https://github.com/codergeeta/safeguard",
+  "repository": "https://github.com/codergeeta/safeguard",
+  "license": "MIT",
+  "keywords": ["security", "phishing", "scam", "supply-chain", "npm", "pypi", "composer", "mcp", "claude-code", "incident-response"]
+}

@@ -1,0 +1,3 @@
+# LF everywhere: the scanners recognise their own files by exact content hash.
+* text=auto eol=lf
+*.png binary

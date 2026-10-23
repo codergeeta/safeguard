@@ -1,0 +1,5 @@
+node_modules/
+safeguard-report-*.html
+safeguard-scam-check-*.html
+.DS_Store
+Thumbs.db
