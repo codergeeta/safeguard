@@ -1,6 +1,8 @@
 # Safeguard
 
-**A Claude skill that helps people and developers avoid, spot, and recover from 2026-era attacks.** It checks scam messages, walks you through account security, audits AI-agent setups and dependencies in every major ecosystem, and explains everything with visual, offline reports.
+**A security skill for every AI agent, and for people who don't use AI at all. It helps you avoid, spot, and recover from 2026-era attacks.** It checks scam messages, walks you through account security, audits AI-agent setups and dependencies in every major ecosystem, and explains everything with visual, offline reports.
+
+Works with **Claude Code, OpenAI Codex, Cursor, GitHub Copilot, Gemini CLI, Windsurf, Cline, OpenCode, Goose, Roo, Kiro, Continue, Junie, Amp, Zed** and 60+ more agents (open Agent Skills format). It also works with **any MCP client** (Claude Desktop, ChatGPT desktop, VS Code…), with **chat apps** (ChatGPT, Gemini, Claude Projects), and as a **plain command-line tool**.
 
 ![Safeguard dashboard](docs/dashboard.png)
 
@@ -54,7 +56,7 @@ For everyday users, the **scam check card** shows their own message with every r
 
 | Area | Checks |
 |---|---|
-| **AI agents** | Claude Code hooks, permission rules, `bypassPermissions`, MCP servers (Claude Code, Claude Desktop, Cursor, VS Code, Windsurf), skills, commands, plugins, `CLAUDE.md`/`AGENTS.md` prompt injection |
+| **AI agents** | Claude Code hooks and permission rules; Codex approval/sandbox policy; MCP servers in Claude Code/Desktop, Codex (TOML), Cursor, VS Code, Gemini CLI, Windsurf, Cline, Zed; installed skills for ~20 agents; prompt injection in `CLAUDE.md`, `AGENTS.md`, `GEMINI.md`, `.cursor/rules`, `.windsurf/rules`, `.clinerules`, Copilot instructions |
 | **npm / pnpm / yarn** | Install scripts, git/URL deps, odd registries, typosquats, known-bad versions, missing lockfile |
 | **Python** | Known-bad versions, typosquats, `--extra-index-url` dependency confusion, VCS deps, unpinned/unhashed requirements, **`.pth` / `sitecustomize.py` startup hooks in local venvs** |
 | **PHP** | Composer `allow-plugins: true`, plugin packages, install scripts, VCS repos, **webshells** (`eval($_POST…)`, decoded eval, PHP in `uploads/`) |
@@ -64,47 +66,54 @@ For everyday users, the **scam check card** shows their own message with every r
 | **Code** | Download-and-execute, credential theft plus network calls, exfil hosts (Discord/Telegram webhooks, webhook.site…), obfuscation, reverse shells, persistence, hidden Unicode, text aimed at AI reviewers |
 | **Secrets** | 25+ token types (GitHub, npm, PyPI, AWS, Anthropic, OpenAI, Stripe, Supabase service keys, DB URLs, private keys…) with values always redacted; `--home` reviews the credential files infostealers target |
 
-## Install
+## Install — pick what you use
 
-**As a plugin** (recommended; updates with the repo):
+| You use | How | Command |
+|---|---|---|
+| **Any coding agent that reads skills** (Codex, Cursor, Copilot, Gemini CLI, Windsurf, Cline, OpenCode, Goose, Roo, Kiro, Continue, Junie, Amp, Claude Code, 60+ more) | Agent Skills installer | `npx skills add codergeeta/safeguard` |
+| …or our own installer (Node 18+, detects your agents) | Copies the skill into every detected agent | `npx github:codergeeta/safeguard install` |
+| **Claude Code** | Plugin (auto-updates) | `/plugin marketplace add codergeeta/safeguard` then `/plugin install safeguard@codergeeta` |
+| **Gemini CLI** | Native extension (skill + MCP) | `gemini extensions install https://github.com/codergeeta/safeguard` |
+| **Any MCP client** (Claude Desktop, ChatGPT desktop, VS Code, Cursor, Codex, Windsurf, Zed, Cline, Continue…) | MCP server with 7 tools, 7 guides, 4 prompts | `npx github:codergeeta/safeguard mcp-config` prints the exact config for each app |
+| **ChatGPT, Gemini, Claude.ai, Copilot chat** (no code) | Custom GPT / Gem / Project instructions | Paste [`chat/INSTRUCTIONS.md`](skills/safeguard/chat/INSTRUCTIONS.md) and upload [`references/`](skills/safeguard/references) as knowledge |
+| **No AI at all** | Command-line tool + offline pages | `npx github:codergeeta/safeguard checkup --open` or `… scan <folder> --open` |
 
-```text
-/plugin marketplace add codergeeta/safeguard
-/plugin install safeguard@codergeeta
+Installer options: `--list` shows the supported agents and which are detected, `--agent codex,cursor` picks agents, `--all` installs for every agent, `--project <dir>` installs into a repo instead of your profile, `--dry-run` previews, and `--uninstall` removes it. It never overwrites a different skill that happens to be called "safeguard".
+
+**MCP setup example.** This works for Claude Desktop, Cursor, Windsurf, Gemini CLI and Cline. VS Code uses a `"servers"` key with `"type": "stdio"`, and Codex uses TOML; `mcp-config` prints those too.
+
+```json
+{ "mcpServers": { "safeguard": { "command": "npx", "args": ["-y", "github:codergeeta/safeguard", "mcp"] } } }
 ```
 
-Then ask Claude anything from the table above, or invoke it directly with `/safeguard:safeguard`.
-
-**Or as a personal skill:** copy `skills/safeguard` into `~/.claude/skills/safeguard` (invoke with `/safeguard`):
-
-```bash
-git clone https://github.com/codergeeta/safeguard
-cp -r safeguard/skills/safeguard ~/.claude/skills/safeguard
-```
-
-Requires Node.js 18 or later for the scanners. Without Node, the skill falls back to manual checks.
+The scanners need Node.js 18 or later. Without Node, agents fall back to the manual checks in the guides, and chat apps use the instruction pack.
 
 ## Use
 
-Just ask:
+Just ask your agent or chat app:
 
 - *"Is this message a scam?"* and paste it
+- *"Help me secure my accounts"*
 - *"Audit this project for supply-chain risks"*
-- *"Check my Claude Code setup for anything dangerous"*
+- *"Check my AI agent setup for anything dangerous"*
 - *"Is the MCP server in ./downloads/foo safe to install?"*
 - *"I pasted a command from a CAPTCHA page, what do I do?"*
 
-Or run the scanners yourself:
+Or use the command line. `npx github:codergeeta/safeguard <command>` works with nothing installed, and `npm i -g github:codergeeta/safeguard` gives you a `safeguard` command:
 
 ```bash
-node skills/safeguard/scripts/safeguard.mjs <project> --open        # full checkup + visual dashboard
-node skills/safeguard/scripts/check_deps.mjs <project>              # dependencies & CI, all ecosystems
-node skills/safeguard/scripts/audit_agent_config.mjs --project <p>  # AI-agent config
-node skills/safeguard/scripts/scan_package.mjs <dir>                # vet a package / skill / website root
-node skills/safeguard/scripts/scan_secrets.mjs <dir> --home         # plaintext secrets
+safeguard scan <folder> --open          # full checkup + visual dashboard
+safeguard deps <folder>                 # dependencies & CI, all ecosystems
+safeguard agent --project <folder>      # AI-agent config across all major agents
+safeguard package <folder>              # vet a package / skill / MCP server / website root
+safeguard secrets <folder> --home       # plaintext secrets (values redacted)
+safeguard checkup --open                # interactive personal security checklist
+safeguard mcp                           # run the MCP server
 ```
 
 Every scanner supports `--json` and exits with code `2` when HIGH findings exist, so you can use them in CI.
+
+![Personal checkup page](docs/checkup.png)
 
 ## Safety design
 
@@ -126,7 +135,7 @@ Every scanner supports `--json` and exits with code `2` when HIGH findings exist
 node skills/safeguard/tests/run_tests.mjs
 ```
 
-The 91 tests build throwaway malicious and clean fixtures in your temp folder: hooks, MCP configs, webshells, `.pth` stealers, poisoned lockfiles for every ecosystem, workflow injections, and XSS payloads. They then check every scanner and both HTML reports against them. The suite also includes:
+The 120 tests build throwaway malicious and clean fixtures in your temp folder: hooks, MCP configs, webshells, `.pth` stealers, poisoned lockfiles for every ecosystem, workflow injections, and XSS payloads. They then check every scanner and both HTML reports against them. The suite also includes:
 
 - **Regression tests from an independent review:** realistic false positives (UI comments, `$curl`/`$apiKey`, ngrok dev origins, WordPress stubs, apps that read `OPENAI_API_KEY`), malformed lockfiles, and a performance test on a 2 MB minified bundle.
 - **Speed:** every regex is bounded, so a scan never stalls on huge single-line files.

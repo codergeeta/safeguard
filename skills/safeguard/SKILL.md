@@ -1,11 +1,21 @@
 ---
 name: safeguard
-description: Personal and developer cyber-safety assistant built on 2026 attack trends. Use when the user asks whether a message, email, SMS, call, link, QR code, pop-up, or "paste this command" instruction is a scam or phishing; wants to secure their accounts, devices, or passwords; asks to audit their machine, Claude Code / AI-agent setup, hooks, MCP servers, skills, secrets, or dependencies in any ecosystem (npm, Python/PyPI, PHP/Composer/WordPress, Ruby, Go, Rust, Java, .NET, Docker, GitHub Actions); wants to vet a skill, MCP server, package, or extension before installing it; or thinks they, their machine, or their website has been hacked.
+description: Personal and developer cyber-safety assistant built on 2026 attack trends. Use when the user asks whether a message, email, SMS, call, link, QR code, pop-up, or "paste this command" instruction is a scam or phishing; wants to secure their accounts, devices, or passwords; asks to audit their machine, AI coding-agent setup (Claude Code, Codex, Cursor, Copilot, Gemini CLI, Windsurf, Cline and others), hooks, MCP servers, skills, rules files, secrets, or dependencies in any ecosystem (npm, Python/PyPI, PHP/Composer/WordPress, Ruby, Go, Rust, Java, .NET, Docker, GitHub Actions); wants to vet a skill, MCP server, package, or extension before installing it; or thinks they, their machine, or their website has been hacked.
 ---
 
 # Safeguard
 
 Helps people avoid, detect, and recover from the attacks that dominate 2026: AI-written phishing on every channel, ClickFix "paste this command" lures, MFA-bypassing session theft, infostealers, hacked websites, and poisoned packages across every major ecosystem (npm, PyPI, Packagist/Composer, WordPress, RubyGems, Go, crates.io, GitHub Actions, VS Code extensions), plus skills, MCP servers, and hooks aimed at AI agents. The threat catalogue is in `references/threats-2026.md`.
+
+This skill follows the open Agent Skills format and works in any agent that reads `SKILL.md` (Claude Code, Codex, Cursor, GitHub Copilot, Gemini CLI, Windsurf, Cline, OpenCode, Goose, Roo, Kiro, Junie, and others).
+
+## How to run it where you are
+
+Use the first option that is available to you:
+
+1. **You can run shell commands** → use the Node.js scripts below (Modes 3–5) and the visual reports.
+2. **You have the `safeguard` MCP tools** (`safeguard_checkup`, `check_dependencies`, `audit_agent_config`, `scan_package`, `scan_secrets`, `render_scam_card`, `get_guide`) → call those instead of the scripts. They run the same scanners.
+3. **Neither (a chat app)** → you can still do Modes 1, 2 and 5 fully from the reference guides. For Modes 3–4, guide the user through the manual checks in `references/audit-dev-agent.md`. Suggest they run `npx github:codergeeta/safeguard scan <folder> --open` themselves for the full visual report.
 
 ## Hard rules (apply in every mode)
 
@@ -24,7 +34,7 @@ Helps people avoid, detect, and recover from the attacks that dominate 2026: AI-
 |---|---|---|
 | pastes or describes a message, link, call, QR code, pop-up, CAPTCHA, or command and asks if it is safe | **1. Scam check** | `references/scam-triage.md` |
 | wants to secure accounts, devices, home network, or family | **2. Security checkup** | `references/checkup-personal.md` |
-| wants their machine, Claude Code / AI-agent setup, repo, dependencies, CI, or website audited | **3. Dev & agent audit** | `references/audit-dev-agent.md`, then `references/ecosystems.md` for each ecosystem found |
+| wants their machine, AI-agent setup, repo, dependencies, CI, or website audited | **3. Dev & agent audit** | `references/audit-dev-agent.md`, then `references/ecosystems.md` for each ecosystem found |
 | wants to know if a skill, MCP server, package, repo, plugin, or extension is safe *before* installing | **4. Vet before install** | `references/audit-dev-agent.md` (Mode 4 section) |
 | thinks they were hacked or scammed, paid a scammer, ran a pasted command, lost an account, leaked a token, or their website was defaced or is redirecting | **5. Incident response** | `references/incident-response.md`: start immediately, triage first |
 
@@ -34,12 +44,12 @@ If the request is vague ("keep me safe"), offer Mode 2 for everyday users and Mo
 
 ## Scripts (Modes 3, 4, 5)
 
-Dependency-free Node.js (v18+), read-only, offline. Run with `node`; each prints a findings report and exits with code 2 when HIGH findings exist. Add `--json` for machine-readable output. `<skill>` below is this skill's directory: `${CLAUDE_SKILL_DIR}`.
+Dependency-free Node.js (v18+), read-only, offline. Run with `node`; each prints a findings report and exits with code 2 when HIGH findings exist. Add `--json` for machine-readable output. `<skill>` below is the directory containing this SKILL.md: Claude Code exposes it as `${CLAUDE_SKILL_DIR}`, and other agents show it as the path they loaded this file from. If you can't tell, use the `safeguard` command when it is installed (`safeguard scan <repo>`, `safeguard deps <repo>`, ...), or `npx github:codergeeta/safeguard <command>`.
 
 | Script | Purpose | Example |
 |---|---|---|
 | `scripts/safeguard.mjs` | **Start here for audits.** Runs all four scanners on a project and writes a visual HTML dashboard | `node <skill>/scripts/safeguard.mjs <repo> --open` |
-| `scripts/audit_agent_config.mjs` | Claude Code and other agent config: hooks, permissions, MCP servers (Claude, Claude Desktop, Cursor, VS Code, Windsurf), skills, commands, agents, plugins, CLAUDE.md/AGENTS.md | `node <skill>/scripts/audit_agent_config.mjs --project <repo>` |
+| `scripts/audit_agent_config.mjs` | AI-agent config for every major agent: Claude Code hooks and permissions; MCP servers in Claude Code/Desktop, Codex, Cursor, VS Code, Gemini CLI, Windsurf, Cline, Zed; installed skills for ~20 agents; rules files (CLAUDE.md, AGENTS.md, GEMINI.md, .cursor/rules, .windsurf/rules, .clinerules, Copilot instructions) | `node <skill>/scripts/audit_agent_config.mjs --project <repo>` |
 | `scripts/check_deps.mjs` | Dependencies and pipelines in every ecosystem: npm/pnpm/yarn, Python (requirements, pyproject, locks, **local venvs incl. `.pth` startup hooks**), Composer, Ruby, Go, Cargo, Maven/Gradle, NuGet, Dockerfiles, GitHub Actions, VS Code workspace | `node <skill>/scripts/check_deps.mjs <repo>` |
 | `scripts/scan_package.mjs` | Static vetting of any folder: skill, MCP server, package, extension, repo, or **website root** (PHP webshells, obfuscated payloads, credential theft, prompt injection) | `node <skill>/scripts/scan_package.mjs <dir> [--deep]` |
 | `scripts/scan_secrets.mjs` | Plaintext secrets in a folder, and with `--home` the credential files infostealers target (values redacted) | `node <skill>/scripts/scan_secrets.mjs <dir> [--home]` |
@@ -58,6 +68,8 @@ People understand risk faster when they can see it. Offer a visual report whenev
 
 - **Audit dashboard** (Modes 3–5): `node <skill>/scripts/safeguard.mjs <project> --open [--home] [--no-user]`. Shows a health score, risk by area, the top three fixes, the 2026 **attack chain** each kind of finding enables (with the step the finding opens highlighted), and a filterable list of every finding with "what this means" and "fix". A checkbox lets the user tick off each one as handled.
 - **Scam explainer card** (Mode 1): after you judge a message, write a JSON file with the verdict and flags (format at the top of `scripts/scam_card.mjs`), then run `node <skill>/scripts/scam_card.mjs <card.json> --open`. The card shows the user's own message with each red flag highlighted and numbered. It also shows the scam's step-by-step chain with "you are here" marked, what to do now, and the safe way to verify. Each `quote` must be copied exactly from the message so it can be highlighted. Write the JSON to a temp folder, never into the user's project. Do not include passwords, card numbers, or codes the user pasted; replace them with `[removed]` first.
+
+- **Personal checkup page** (Mode 2, also for people without any AI): `node <skill>/scripts/checkup.mjs --open` writes an interactive checklist of the security checkup and the scam red flags, with progress saved in the browser.
 
 If the user cannot open files (for example on a phone chat), give the same content in the text format below.
 

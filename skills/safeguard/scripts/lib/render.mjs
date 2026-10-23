@@ -48,7 +48,7 @@ button,select,input{font:inherit;color:inherit}
 @media (max-width:720px){.chain{flex-direction:column}.arrow{transform:rotate(90deg);line-height:1}h1{font-size:24px}}
 `;
 
-function page(title, body, extraCss = '', script = '', bodyAttrs = '') {
+export function page(title, body, extraCss = '', script = '', bodyAttrs = '') {
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">${CSP}<title>${esc(title)}</title><style>${BASE_CSS}${extraCss}</style></head><body${bodyAttrs}>${body}${script ? `<script>${script}</script>` : ''}</body></html>`;
 }
 

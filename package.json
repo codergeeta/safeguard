@@ -1,0 +1,15 @@
+{
+  "name": "@codergeeta/safeguard",
+  "version": "1.1.0",
+  "description": "Protect people and code from 2026-era scams, account takeover, infostealers and supply-chain attacks. Agent skill for 20+ AI agents, MCP server, CLI, and offline visual reports.",
+  "type": "module",
+  "bin": { "safeguard": "bin/safeguard.mjs" },
+  "files": ["bin", "skills", "gemini-extension.json", "GEMINI.md", "README.md", "LICENSE"],
+  "engines": { "node": ">=18" },
+  "scripts": { "test": "node skills/safeguard/tests/run_tests.mjs" },
+  "keywords": ["security", "phishing", "scam", "supply-chain", "agent-skills", "mcp", "claude", "codex", "cursor", "copilot", "gemini-cli", "npm", "pypi", "composer"],
+  "repository": { "type": "git", "url": "git+https://github.com/codergeeta/safeguard.git" },
+  "homepage": "https://github.com/codergeeta/safeguard",
+  "license": "MIT",
+  "author": "codergeeta"
+}
