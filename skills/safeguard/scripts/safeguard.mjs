@@ -10,17 +10,17 @@ import { parseArgs, isDir } from './lib/common.mjs';
 import { renderDashboard, score } from './lib/render.mjs';
 import { openFile, stamp } from './lib/open.mjs';
 
-const args = parseArgs(process.argv.slice(2), { flags: ['home', 'no-user', 'deep', 'open', 'json', 'help'], options: ['out'] });
-if (args.help) {
-  console.log(`Usage: node safeguard.mjs [project-dir] [options]
-  --home      also check credential files in your home directory
-  --no-user   skip user-level agent config (~/.claude, editor MCP configs)
-  --deep      include node_modules and virtualenvs in the code scan
-  --out FILE  where to write the HTML report (default: your temp folder)
-  --open      open the report in your browser
-  --json      print combined JSON instead of the text summary`);
-  process.exit(0);
-}
+const USAGE = `Usage: node safeguard.mjs [project-dir] [options]
+  --home        also check credential files in your home directory
+  --no-user     skip user-level agent config (~/.claude, editor MCP configs)
+  --deep        include node_modules and virtualenvs in the code scan
+  --site DOMAIN also run the live outside-in check of a website you own (needs --i-own-this; uses the network)
+  --out FILE    where to write the HTML report (default: your temp folder)
+  --open        open the report in your browser
+  --json        print combined JSON instead of the text summary`;
+const args = parseArgs(process.argv.slice(2), { flags: ['home', 'no-user', 'deep', 'open', 'json', 'help', 'i-own-this'], options: ['out', 'site'] }, USAGE);
+if (args.help) { console.log(USAGE); process.exit(0); }
+if (args.site && !args['i-own-this']) { console.error('--site needs --i-own-this: only check websites you own or are authorised to test.'); process.exit(1); }
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const project = path.resolve(args._[0] || process.cwd());
@@ -37,6 +37,7 @@ const raw = {
   deps: run('check_deps.mjs', project),
   code: run('scan_package.mjs', project, ...(args.deep ? ['--deep'] : [])),
   secrets: run('scan_secrets.mjs', project, ...(args.home ? ['--home'] : [])),
+  ...(args.site ? { site: run('site_check.mjs', args.site, '--i-own-this', '--no-report') } : {}),
 };
 
 // Several scanners look at the same files (e.g. .claude/, package.json); keep each finding once.
@@ -47,8 +48,9 @@ for (const [id, r] of Object.entries(raw)) {
   if (r.error) { notes.push(`${id} scan failed: ${r.error}`); continue; }
   const findings = [];
   for (const f of r.findings) {
-    const abs = f.file ? path.resolve(r.root || '', f.file) : '';
-    const relToProject = abs && !path.relative(project, abs).startsWith('..') ? path.relative(project, abs) || path.basename(abs) : abs;
+    // Website findings point at URLs/domains, not files.
+    const abs = f.file && id !== 'site' ? path.resolve(r.root || '', f.file) : f.file || '';
+    const relToProject = id !== 'site' && abs && !path.relative(project, abs).startsWith('..') ? path.relative(project, abs) || path.basename(abs) : abs;
     const key = `${abs.toLowerCase()}|${f.line}|${f.message}`;
     if (seen.has(key)) continue;
     seen.add(key);

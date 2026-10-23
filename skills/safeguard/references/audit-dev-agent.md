@@ -45,6 +45,11 @@ Use Grep with these regexes:
 - Move secrets out of repos into a secret manager or OS keychain; rotate anything that was ever committed (deleting it from the latest commit is not enough).
 - Pin GitHub Actions to full commit SHAs; set `permissions: read-all` at the top of workflows; avoid `pull_request_target` with checkout of PR code.
 - Per-ecosystem hardening in `ecosystems.md`.
+- Prevention, so it doesn't happen again (explain each one and get a yes first):
+  - `scripts/guard.mjs --install` blocks dangerous agent commands before they run.
+  - `scripts/precommit.mjs --install` blocks commits containing secrets.
+  - The GitHub Action scans every push or pull request.
+  - `scripts/schedule.mjs <repo> --apply` re-checks weekly.
 
 ## Mode 4: vet before install
 

@@ -22,7 +22,7 @@ export const COMMAND_RULES = [
   { id: 'secret-var-send', sev: 'HIGH', re: new RegExp(`${NET_TOOL}[^\\n]{0,300}${SECRET_VAR}`), msg: 'Sends a secret-looking variable over the network' },
   { id: 'cred-file-send', sev: 'HIGH', re: new RegExp(`${CRED_PATH}[^\\n]{0,300}${NET_TOOL}|${NET_TOOL}[^\\n]{0,300}${CRED_PATH}`, 'i'), msg: 'Reads a credential file and sends it over the network' },
   { id: 'reverse-shell', sev: 'HIGH', re: /\/dev\/tcp\/|(?<![\w$.-])nc(at)?\s[^\n]{0,100}\s-e\s|\bsocat\b[^\n]{0,200}exec:|\bmkfifo\b[^\n]{0,200}(?<![\w$.-])(nc|ncat)\s|\|\s*(ba)?sh\s+-i\b[^\n]{0,100}\|\s*(nc|ncat)\b/i, msg: 'Reverse shell pattern' },
-  { id: 'persistence', sev: 'MEDIUM', re: /(\bcrontab\s+-|>>\s*~?\/?\.?(bashrc|zshrc|profile|bash_profile)\b|>>\s*~?\/?\.ssh\/authorized_keys|schtasks(\.exe)?\s+\/create|reg(\.exe)?\s+add\s+[^\n]{0,120}\\Run\b|LaunchAgents\/[^\s]+\.plist)/i, msg: 'Sets up persistence (cron, shell profile, SSH key, scheduled task, Run key, LaunchAgent)' },
+  { id: 'persistence', sev: 'MEDIUM', re: /(\bcrontab\s+(-[a-km-z]\w*|-(?=[\s);|&]|$)|[^\s-])|>>\s*~?\/?\.?(bashrc|zshrc|profile|bash_profile)\b|>>\s*~?\/?\.ssh\/authorized_keys|schtasks(\.exe)?\s+\/create|reg(\.exe)?\s+add\s+[^\n]{0,120}\\Run\b|LaunchAgents\/[^\s]+\.plist)/i, msg: 'Sets up persistence (cron, shell profile, SSH key, scheduled task, Run key, LaunchAgent)' },
   { id: 'temp-exec', sev: 'MEDIUM', re: /(\/tmp\/|%TEMP%|\$env:TEMP|AppData[\\/]Local[\\/]Temp|Downloads[\\/])[^\s"']{0,200}\.(sh|exe|ps1|bat|cmd|py|js)\b/i, msg: 'Runs something from a temp or Downloads folder' },
   { id: 'chmod-exec-download', sev: 'MEDIUM', re: new RegExp(`${T}(curl|wget)\\b[^\\n]{0,200}(-o|-O|--output)\\s*\\S+[^\\n]{0,200}(chmod\\s+\\+?[0-7]*x|&&\\s*\\.\\/)`, 'i'), msg: 'Downloads a file, makes it executable, and runs it' },
   { id: 'raw-ip-url', sev: 'MEDIUM', re: /https?:\/\/(?!(127\.|10\.|192\.168\.|0\.0\.0\.0))(\d{1,3}\.){3}\d{1,3}(:\d+)?\//i, msg: 'Contacts a raw public IP address' },
@@ -44,9 +44,13 @@ export const CODE_RULES = [
   { id: 'php-preg-e', sev: 'MEDIUM', re: /preg_replace\s*\(\s*['"]([^\w\s\\])[^\n]{0,200}?\1[imsxuADSUXJ]*e[imsxuADSUXJ]*['"]/, msg: 'preg_replace with /e modifier (code execution)', exts: PHP },
   { id: 'php-create-function', sev: 'MEDIUM', re: /\bcreate_function\s*\(/i, msg: 'create_function (eval in disguise)', exts: PHP },
   { id: 'php-upload-exec', sev: 'LOW', re: /move_uploaded_file\s*\([^)]{0,200}\$_FILES/i, msg: 'File upload handler — check it blocks .php uploads', exts: PHP },
+  { id: 'php-wp-vcd', sev: 'HIGH', re: /\$_REQUEST\[\s*['"]password['"]\s*\]\s*==\s*['"][0-9a-f]{32}['"]|\bWP_V_CD\b|wp-vcd\.php|class\.(theme|plugin)-modules\.php|wp-tmp\.php/i, msg: 'wp-vcd malware (spread through nulled plugins/themes): creates hidden admin users and spam pages', exts: PHP },
   { id: 'hex-blob', sev: 'MEDIUM', re: /(\\x[0-9a-fA-F]{2}){60,}/, msg: 'Long hex-escaped blob (common obfuscation)' },
   { id: 'charcode-blob', sev: 'MEDIUM', re: /String\.fromCharCode\s*\(\s*(\d{2,3}\s*,\s*){40,}/, msg: 'Long String.fromCharCode sequence (obfuscation)' },
 ];
+
+// Nulled/cracked-source markers show up in readmes and plugin headers, so this runs on every text file.
+export const NULLED_RULE = { id: 'nulled-source', sev: 'MEDIUM', re: /\b(nulled|cracked)\s+(by|with)\b|\bnull(ed)?[-_ ]?(24|scripts)\b|\b(weadown|wplocker|codelist\.cc|babiato|gpl[-_ ]?vault)\b/i, msg: 'Plugin/theme appears to come from a nulled or cracked source (common malware carrier)' };
 
 // Signals combined per file to find "read secrets + send them" behaviour.
 // Deliberately narrow: an app that reads OPENAI_API_KEY and calls fetch is normal;

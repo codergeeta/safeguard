@@ -1,0 +1,45 @@
+name: Safeguard security check
+description: Scans the repository for malicious dependencies, workflow injection, poisoned agent config, webshells and leaked secrets. Read-only and offline.
+author: codergeeta
+branding:
+  icon: shield
+  color: blue
+
+inputs:
+  path:
+    description: Folder to scan
+    default: .
+  fail-on:
+    description: Fail the job on this severity or worse (high, medium, low, never)
+    default: high
+  upload-report:
+    description: Upload the visual HTML report as an artifact (true/false)
+    default: 'true'
+
+outputs:
+  health:
+    description: Health score 0-100
+    value: ${{ steps.scan.outputs.health }}
+  high:
+    description: Number of HIGH findings
+    value: ${{ steps.scan.outputs.high }}
+  medium:
+    description: Number of MEDIUM findings
+    value: ${{ steps.scan.outputs.medium }}
+
+runs:
+  using: composite
+  steps:
+    - id: scan
+      shell: bash
+      env:
+        SG_PATH: ${{ inputs.path }}
+        SG_FAIL_ON: ${{ inputs.fail-on }}
+        SG_DIR: ${{ github.action_path }}
+      run: node "$SG_DIR/skills/safeguard/scripts/ci.mjs" "$SG_PATH" --fail-on "$SG_FAIL_ON" --out "$RUNNER_TEMP/safeguard-report.html"
+    - if: always() && inputs.upload-report == 'true'
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      with:
+        name: safeguard-report
+        path: ${{ runner.temp }}/safeguard-report.html
+        if-no-files-found: ignore

@@ -62,6 +62,7 @@ function renderSection(sec, { checklist, prefix }) {
 const checkup = sections(read('checkup-personal.md')).filter(s => !/^wrap-up/i.test(s.title));
 const triage = sections(read('scam-triage.md')).filter(s => /red flags|safe path|verdict/i.test(s.title));
 const incident = sections(read('incident-response.md')).filter(s => /^[0-3]\./.test(s.title));
+const website = sections(read('website-hardening.md')).filter(s => /^\d\./.test(s.title));
 
 const css = `
 .top{display:flex;gap:16px;align-items:center;justify-content:space-between;flex-wrap:wrap;margin-bottom:8px}
@@ -82,7 +83,7 @@ code{font-family:var(--mono);font-size:12.5px;background:var(--plane);padding:1p
 const js = `
 const KEY='safeguard-checkup';let done={};try{done=JSON.parse(localStorage.getItem(KEY)||'{}')}catch(e){}
 const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(done))}catch(e){}};
-function refresh(){let all=0,n=0;document.querySelectorAll('[data-pane="checkup"] [data-sec]').forEach(s=>{const b=s.querySelectorAll('input'),c=s.querySelectorAll('input:checked').length;all+=b.length;n+=c;s.querySelector('.count').textContent=c+' / '+b.length;s.querySelector('.bar span').style.width=(b.length?c/b.length*100:0)+'%'});
+function refresh(){let all=0,n=0;document.querySelectorAll('[data-pane="website"] [data-sec]').forEach(s=>{const b=s.querySelectorAll('input'),c=s.querySelectorAll('input:checked').length;s.querySelector('.count').textContent=c+' / '+b.length;s.querySelector('.bar span').style.width=(b.length?c/b.length*100:0)+'%'});document.querySelectorAll('[data-pane="checkup"] [data-sec]').forEach(s=>{const b=s.querySelectorAll('input'),c=s.querySelectorAll('input:checked').length;all+=b.length;n+=c;s.querySelector('.count').textContent=c+' / '+b.length;s.querySelector('.bar span').style.width=(b.length?c/b.length*100:0)+'%'});
 document.getElementById('overall').style.width=(all?n/all*100:0)+'%';document.getElementById('overallText').textContent=n+' of '+all+' steps done'}
 document.querySelectorAll('.item input').forEach(cb=>{if(done[cb.dataset.id]){cb.checked=true;cb.closest('.item').classList.add('done')}
 cb.addEventListener('change',()=>{if(cb.checked)done[cb.dataset.id]=1;else delete done[cb.dataset.id];cb.closest('.item').classList.toggle('done',cb.checked);save();refresh()})});refresh();
@@ -94,9 +95,10 @@ const body = `<div class="wrap" style="max-width:900px">
 <div class="panel hero"><div class="top"><div><div class="eyebrow">Safeguard · personal security</div><h1>Your security checkup</h1></div><div><button class="tbtn" id="print">Print</button> <button class="tbtn" id="reset">Reset</button></div></div>
 <p class="ink2">Work through these at your own pace. Highest impact first: start with your email, the master key to everything else. Ticks are saved in this browser only; nothing is sent anywhere.</p>
 <div class="overall"><div class="bar"><span id="overall"></span></div><b id="overallText" class="small"></b></div></div>
-<div class="tabs" role="tablist"><button data-tab="checkup" aria-selected="true">✅ Checkup</button><button data-tab="scam" aria-selected="false">🚩 Spot a scam</button><button data-tab="hacked" aria-selected="false">🆘 I think I've been hacked</button></div>
+<div class="tabs" role="tablist"><button data-tab="checkup" aria-selected="true">✅ Checkup</button><button data-tab="scam" aria-selected="false">🚩 Spot a scam</button><button data-tab="website" aria-selected="false">🌐 My website</button><button data-tab="hacked" aria-selected="false">🆘 I think I've been hacked</button></div>
 <div data-pane="checkup">${checkup.map(s => renderSection(s, { checklist: true, prefix: 'c' })).join('')}</div>
 <div data-pane="scam" hidden><div class="panel" style="margin-bottom:12px;border-left:5px solid var(--crit)"><b>The one rule:</b> no real company, bank, CAPTCHA or support agent ever needs you to paste a command, read back a code, install remote-access software, or pay with gift cards or crypto.</div>${triage.map(s => renderSection(s, { checklist: false })).join('')}</div>
+<div data-pane="website" hidden><div class="panel" style="margin-bottom:12px;border-left:5px solid var(--s1)"><b>For website and shop owners.</b> Start with section 1: whoever controls your domain registrar and DNS controls your site and your email. For an automatic outside-in check of a site you own, run <code>npx github:codergeeta/safeguard site yourdomain.com --i-own-this --open</code>.</div>${website.map(s => renderSection(s, { checklist: true, prefix: 'w' })).join('')}</div>
 <div data-pane="hacked" hidden><div class="panel" style="margin-bottom:12px;border-left:5px solid var(--crit)"><b>Order matters:</b> money first, then disconnect the affected device, then change passwords and sign out of all sessions <i>from a different, clean device</i>.</div>${incident.map(s => renderSection(s, { checklist: false })).join('')}</div>
 <footer>Made offline by Safeguard (github.com/codergeeta/safeguard). Not financial or legal advice; for money already lost, call your bank using the number on your card.</footer></div>`;
 

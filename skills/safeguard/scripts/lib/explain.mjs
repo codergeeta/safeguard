@@ -163,6 +163,55 @@ const E = {
     at: 1,
     fix: 'Ask why the package needs it, prefer builds from source or official releases with checksums.',
   },
+  siteConfig: {
+    title: 'Production website misconfiguration',
+    meaning: 'Debug mode, placeholder secret keys, directory listing, or secret/backup files inside the public web folder hand attackers passwords, source code, and stack traces without any hacking.',
+    chain: ['Attacker requests a known path (/.env, /.git/, backup.sql)', 'Server hands over the file or a debug page', 'Database and API credentials stolen', 'Site and customer data taken over'],
+    at: 1,
+    fix: 'Turn debug off in production, generate real secret keys/salts, disable directory listing, and keep .env, .git, dumps and logs outside the web root.',
+  },
+  siteExposed: {
+    title: 'Secrets or source publicly downloadable',
+    meaning: 'Anyone on the internet can download this file right now. Bots scan every site for these paths within hours of it going online.',
+    chain: ['Bot scans for /.env, /.git, backups', 'Your server returns the file', 'Keys and passwords harvested automatically', 'Accounts, database and cloud bills taken over'],
+    at: 1,
+    fix: 'Block or delete the file now, move it outside the web root, then rotate every password and key it contained — assume it was already copied.',
+  },
+  siteEmail: {
+    title: 'Your domain can be spoofed in email',
+    meaning: 'Without SPF and an enforced DMARC policy, anyone can send email that looks like it comes from your business, to your customers, suppliers and staff.',
+    chain: ['Attacker sends "invoice" or "password reset" as you', 'Receivers can\'t verify it is fake', 'Customers pay or log in to the fake', 'Money lost, your brand blamed'],
+    at: 1,
+    fix: 'Publish one SPF record ending in -all, enable DKIM at every sender, and move DMARC from p=none to p=quarantine and then p=reject.',
+  },
+  siteOrigin: {
+    title: 'Real server IP exposed around the CDN',
+    meaning: 'A proxy such as Cloudflare only protects you if attackers can\'t find and reach the server behind it. Unproxied subdomains, mail records and old DNS history reveal it.',
+    chain: ['Attacker finds origin IP (subdomain, MX, DNS history, cert scan)', 'Connects to the server directly', 'WAF, bot and DDoS protection bypassed', 'Site attacked or knocked offline'],
+    at: 0,
+    fix: 'Firewall the origin to accept only your proxy\'s IP ranges (or use Cloudflare Tunnel), stop pointing other subdomains at it, use a separate mail provider, and change the server IP if it was ever public.',
+  },
+  siteTls: {
+    title: 'HTTPS / certificate problem',
+    meaning: 'Broken, expiring or optional HTTPS lets visitors be intercepted or scares them away with browser warnings.',
+    chain: ['Visitor reaches the site over HTTP or a bad certificate', 'Traffic intercepted on public Wi-Fi', 'Logins and payment details stolen'],
+    at: 0,
+    fix: 'Redirect all HTTP to HTTPS, fix or renew the certificate, turn on automatic renewal, and add HSTS.',
+  },
+  siteHeaders: {
+    title: 'Missing browser security headers',
+    meaning: 'Security headers tell browsers to block injected scripts, clickjacking and downgrade attacks. Version headers tell attackers which exploits to try.',
+    chain: ['A plugin bug lets attacker inject a script', 'No CSP to stop it', 'Card skimmer or credential stealer runs for every visitor'],
+    at: 1,
+    fix: 'Add HSTS, a Content-Security-Policy (start report-only), frame-ancestors, nosniff and Referrer-Policy at the proxy or server; hide version headers.',
+  },
+  siteDomain: {
+    title: 'Domain and DNS takeover risk',
+    meaning: 'Whoever controls the domain controls the website and the email. Unlocked, expiring or unprotected domains and DNS are the quickest way to lose everything at once.',
+    chain: ['Registrar account phished or domain left to expire', 'Attacker changes DNS or transfers the domain', 'Site and email redirected to the attacker', 'Password resets for everything else go to them'],
+    at: 1,
+    fix: 'Turn on registrar transfer lock and auto-renew, 2FA on registrar and DNS accounts, add CAA records, and enable DNSSEC.',
+  },
   generic: {
     title: 'Configuration risk',
     meaning: 'A setting that weakens your defences. Not an attack by itself.',
@@ -176,7 +225,15 @@ export function explain(f) {
   const c = f.category || '';
   const m = f.message || '';
   let key = 'generic';
-  if (/hook/i.test(c) && c.startsWith('agent:')) key = 'hook';
+  if (c === 'site-config') key = 'siteConfig';
+  else if (c === 'site:exposed') key = 'siteExposed';
+  else if (c === 'site:email') key = 'siteEmail';
+  else if (c === 'site:origin') key = 'siteOrigin';
+  else if (c === 'site:tls') key = 'siteTls';
+  else if (c === 'site:headers') key = 'siteHeaders';
+  else if (c === 'site:domain' || c === 'site:dns') key = 'siteDomain';
+  else if (c === 'code:php-wp-vcd') key = 'webshell';
+  else if (/hook/i.test(c) && c.startsWith('agent:')) key = 'hook';
   else if (c === 'agent:permissions') key = 'permissions';
   else if (c === 'agent:mcp') key = 'mcp';
   else if (c.startsWith('injection:')) key = 'injection';

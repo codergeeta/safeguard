@@ -87,6 +87,7 @@ const AREAS = [
   { id: 'deps', label: 'Dependencies & CI', short: 'Dependencies', icon: '<path d="M12 2 3 6.5v11L12 22l9-4.5v-11L12 2Zm0 2.2 6.6 3.3L12 10.8 5.4 7.5 12 4.2ZM5 9.2l6 3v7.6l-6-3V9.2Zm8 10.6v-7.6l6-3v7.6l-6 3Z"/>' },
   { id: 'code', label: 'Code & website files', short: 'Code', icon: '<path d="M8.7 7.3 4 12l4.7 4.7-1.4 1.4L1.2 12l6.1-6.1 1.4 1.4Zm6.6 0 1.4-1.4 6.1 6.1-6.1 6.1-1.4-1.4L20 12l-4.7-4.7Z"/>' },
   { id: 'secrets', label: 'Secrets', short: 'Secrets', icon: '<path d="M14.5 2a7.5 7.5 0 0 0-7.1 9.9L2 17.3V22h4.7v-2.2h2.2v-2.2h2.2l1.4-1.4A7.5 7.5 0 1 0 14.5 2Zm2 3.5a2 2 0 1 1 0 4 2 2 0 0 1 0-4Z"/>' },
+  { id: 'site', label: 'Website (live check)', short: 'Website', icon: '<path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm6.9 6h-3a15.7 15.7 0 0 0-1.4-3.6A8 8 0 0 1 18.9 8ZM12 4c.8 1.2 1.5 2.5 1.9 4h-3.8c.4-1.5 1.1-2.8 1.9-4ZM4.3 14a8 8 0 0 1 0-4h3.4a16.5 16.5 0 0 0 0 4H4.3Zm.8 2h3a15.7 15.7 0 0 0 1.4 3.6A8 8 0 0 1 5.1 16Zm3-8h-3a8 8 0 0 1 4.4-3.6C8.1 5.5 7.6 6.7 8.1 8ZM12 20c-.8-1.2-1.5-2.5-1.9-4h3.8c-.4 1.5-1.1 2.8-1.9 4Zm2.3-6H9.7a14.7 14.7 0 0 1 0-4h4.6a14.7 14.7 0 0 1 0 4Zm.3 5.6c.6-1.1 1.1-2.4 1.4-3.6h3a8 8 0 0 1-4.4 3.6Zm1.7-5.6a16.5 16.5 0 0 0 0-4h3.4a8 8 0 0 1 0 4h-3.4Z"/>' },
 ];
 const icon = (path, size = 20) => `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="currentColor" aria-hidden="true">${path}</svg>`;
 
@@ -115,6 +116,13 @@ const PLAN = {
   docker: { effort: '20 min', cmds: [] },
   editorAutorun: { effort: '5 min', cmds: [] },
   binary: { effort: '15 min', cmds: [] },
+  siteConfig: { effort: '15 min', cmds: [] },
+  siteExposed: { effort: '30 min + rotate keys', cmds: [] },
+  siteEmail: { effort: '30 min', cmds: [] },
+  siteOrigin: { effort: '1 h', cmds: [] },
+  siteTls: { effort: '15 min', cmds: [] },
+  siteHeaders: { effort: '30 min', cmds: [] },
+  siteDomain: { effort: '15 min', cmds: [] },
   generic: { effort: '10 min', cmds: [] },
 };
 
@@ -137,6 +145,13 @@ const CONTROLS = [
   { label: 'No Python startup hooks', area: 'deps', test: f => f.category === 'python-startup', applies: c => c.ecos.has('pypi') },
   { label: 'Container builds hardened', area: 'deps', test: f => f.category === 'deps:docker', applies: c => c.ecos.has('docker') },
   { label: 'Editor won\'t auto-run code', area: 'code', test: f => f.category === 'editor-autorun' },
+  { label: 'Production config safe (debug off, real keys, no secrets in web root)', area: 'code', test: f => f.category === 'site-config' },
+  { label: 'No secrets, source or backups publicly downloadable', area: 'site', test: f => f.category === 'site:exposed' },
+  { label: 'Email can\'t be spoofed (SPF + enforced DMARC)', area: 'site', test: f => f.category === 'site:email' },
+  { label: 'Origin server hidden behind the proxy', area: 'site', test: f => f.category === 'site:origin' },
+  { label: 'HTTPS enforced with a healthy certificate', area: 'site', test: f => f.category === 'site:tls' },
+  { label: 'Browser security headers set', area: 'site', test: f => f.category === 'site:headers' },
+  { label: 'Domain locked, renewing, DNS hardened', area: 'site', test: f => f.category === 'site:domain' || f.category === 'site:dns' },
 ];
 
 function worst(items) {
@@ -213,9 +228,9 @@ export function renderDashboard({ generated, target, areas, notes = [] }) {
   const sorted = [...groups.values()].sort((a, b) => order[a.worst] - order[b.worst] || b.items.length - a.items.length);
 
   // Controls.
-  const controls = CONTROLS.map(c => {
-    const ran = !!areas[c.area];
-    if (!ran || (c.applies && !c.applies(ctx))) return { ...c, status: 'NA' };
+  // Controls for areas that were not part of this run are left out entirely.
+  const controls = CONTROLS.filter(c => areas[c.area]).map(c => {
+    if (c.applies && !c.applies(ctx)) return { ...c, status: 'NA' };
     const hits = actionable.filter(c.test);
     return { ...c, status: hits.length ? worst(hits) : 'OK', hits };
   });
@@ -231,7 +246,11 @@ export function renderDashboard({ generated, target, areas, notes = [] }) {
   const areaRan = AREAS.filter(a => areas[a.id]);
   const ecoNames = { npm: 'npm', pypi: 'Python', composer: 'PHP / Composer', rubygems: 'Ruby', go: 'Go', cargo: 'Rust', jvm: 'Java', nuget: '.NET', docker: 'Docker', 'github-actions': 'GitHub Actions' };
   const summary = [];
-  summary.push(`Safeguard checked <b>${filesScanned.toLocaleString()} files</b>${ecos.size ? ` across <b>${[...ecos].map(e => esc(ecoNames[e] || e)).join(', ')}</b>` : ''}${ctx.mcp ? `, <b>${ctx.mcp} MCP server${ctx.mcp > 1 ? 's' : ''}</b>` : ''} and ${areaRan.length} risk areas, and found <b>${counts.HIGH} high</b>, <b>${counts.MEDIUM} medium</b> and <b>${counts.LOW} low</b>-severity issues. <b>${passing.length} of ${applicable.length}</b> security controls pass.`);
+  const site = areas.site?.meta;
+  const checked = [];
+  if (areaRan.some(a => a.id !== 'site')) checked.push(`<b>${filesScanned.toLocaleString()} files</b>${ecos.size ? ` across <b>${[...ecos].map(e => esc(ecoNames[e] || e)).join(', ')}</b>` : ''}${ctx.mcp ? `, <b>${ctx.mcp} MCP server${ctx.mcp > 1 ? 's' : ''}</b>` : ''}`);
+  if (site) checked.push(`the live site <b>${esc(site.domain)}</b> from the outside (DNS, email authentication, TLS, headers and ${site.pathsChecked} sensitive paths)`);
+  summary.push(`Safeguard checked ${checked.join(' and ')}, and found <b>${counts.HIGH} high</b>, <b>${counts.MEDIUM} medium</b> and <b>${counts.LOW} low</b>-severity issues. <b>${passing.length} of ${applicable.length}</b> security controls pass.`);
   const urgent = sorted.filter(x => x.worst === 'HIGH');
   if (urgent.length) {
     const u = urgent[0];
@@ -252,17 +271,26 @@ export function renderDashboard({ generated, target, areas, notes = [] }) {
   ];
   const tilesHtml = tiles.map(t => `<div class="tile"><div class="tl">${chip(t.sev, t.label || SEV_LABEL[t.sev])}</div><div class="tn">${t.n}</div><div class="muted small">${t.sub}</div></div>`).join('');
 
-  const coverage = [
+  const coverage = [];
+  if (areaRan.some(a => a.id !== 'site')) coverage.push(
     ['Files scanned', filesScanned.toLocaleString()],
     ['Ecosystems', ecos.size ? [...ecos].map(e => ecoNames[e] || e).join(', ') : 'none detected'],
     ['Manifests & pipelines', String(areas.deps?.meta?.manifests ?? '–')],
     ['MCP servers', String(ctx.mcp)],
     ['Agent hooks', String(meta('hooks'))],
     ['Skills reviewed', String(meta('skills'))],
-  ];
+  );
+  if (site) coverage.push(
+    ['Website', site.domain],
+    ['Behind Cloudflare', site.proxied ? 'yes' : 'no'],
+    ['Mail provider', site.mailProvider || '–'],
+    ['Certificate expires in', site.certDays != null ? `${site.certDays} days` : '–'],
+    ['Domain expires in', site.domainExpiresDays != null ? `${site.domainExpiresDays} days` : '–'],
+    ['Public paths probed', `${site.pathsChecked} (${site.exposedPaths} exposed)`],
+  );
 
   // ----- charts -----
-  const areaRows = AREAS.map(a => {
+  const areaRows = areaRan.map(a => {
     const c = { HIGH: 0, MEDIUM: 0, LOW: 0 };
     for (const f of areas[a.id]?.findings || []) if (c[f.severity] != null) c[f.severity]++;
     return { label: a.label, icon: a.icon, c, skipped: !areas[a.id] };
@@ -407,7 +435,7 @@ ${compromiseHint ? '<div class="alert"><b>This machine or site may already be co
 ${chains ? `<section id="paths"><div class="sh"><h2>How an attacker could use this</h2><p class="muted small">Real 2026 attack paths. The red step is the one your findings open; closing it breaks the chain.</p></div><div class="grid">${chains}</div></section>` : ''}
 
 <section id="findings"><div class="sh"><h2>All findings</h2><span class="prog" aria-hidden="true"><span></span></span><span class="muted small" id="progress"></span></div>
-<div class="tools" role="toolbar">${['ALL', 'HIGH', 'MEDIUM', 'LOW', 'INFO'].map(x => `<button data-sev-btn="${x}" aria-pressed="${x === 'ALL'}">${x === 'ALL' ? `All (${all.length})` : `${SEV_LABEL[x]} (${counts[x]})`}</button>`).join('')}<select id="area" aria-label="Area"><option value="ALL">All areas</option>${AREAS.map(a => `<option value="${a.id}">${esc(a.label)}</option>`).join('')}</select><input id="q" type="search" placeholder="Search findings or files" aria-label="Search findings"><button id="expand">Expand all</button><span class="muted small" id="shown" style="align-self:center"></span></div>
+<div class="tools" role="toolbar">${['ALL', 'HIGH', 'MEDIUM', 'LOW', 'INFO'].map(x => `<button data-sev-btn="${x}" aria-pressed="${x === 'ALL'}">${x === 'ALL' ? `All (${all.length})` : `${SEV_LABEL[x]} (${counts[x]})`}</button>`).join('')}<select id="area" aria-label="Area"><option value="ALL">All areas</option>${areaRan.map(a => `<option value="${a.id}">${esc(a.label)}</option>`).join('')}</select><input id="q" type="search" placeholder="Search findings or files" aria-label="Search findings"><button id="expand">Expand all</button><span class="muted small" id="shown" style="align-self:center"></span></div>
 ${rows || '<div class="panel">No findings.</div>'}</section>
 
 ${notes.length ? `<section><details class="tview"><summary>Scanner notes (${notes.length})</summary><ul class="muted small">${notes.map(n => `<li>${esc(n)}</li>`).join('')}</ul></details></section>` : ''}

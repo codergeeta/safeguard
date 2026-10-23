@@ -1,7 +1,8 @@
 // Static file/tree scanner used by scan_package and audit_agent_config.
+import fs from 'node:fs';
 import path from 'node:path';
 import { walk, readText, readHeadTail, fileSize, MAX_TEXT_BYTES, readJson, lineOf, lineText, samePath, isInside, isOwnFile, SKILL_ROOT } from './common.mjs';
-import { COMMAND_RULES, CODE_RULES, INJECTION_RULES, SIGNALS, matchRules, findBase64Blobs, judgePth } from './patterns.mjs';
+import { COMMAND_RULES, CODE_RULES, INJECTION_RULES, NULLED_RULE, SIGNALS, matchRules, findBase64Blobs, judgePth } from './patterns.mjs';
 import { auditSettings, auditMcpConfig } from './agentcfg.mjs';
 
 const CODE_EXT = new Set(['.js', '.mjs', '.cjs', '.ts', '.mts', '.cts', '.jsx', '.tsx', '.py', '.pyw', '.php', '.phtml', '.php3', '.php4', '.php5', '.php7', '.phar', '.inc', '.rb', '.go', '.rs', '.java', '.kt', '.cs', '.ps1', '.psm1', '.sh', '.bash', '.zsh', '.bat', '.cmd', '.vbs', '.lua', '.pl']);
@@ -58,6 +59,8 @@ export function scanFile(file, report, opts = {}) {
     else report.add('INFO', 'webshell', file, null, 'Empty PHP stub in an upload folder (normal for WordPress)');
   }
 
+  siteConfig(file, lower, text, report);
+
   // Manifests.
   if (lower === 'package.json') scanPackageJson(file, report);
   if (lower === 'composer.json') scanComposerJson(file, report);
@@ -91,6 +94,11 @@ export function scanFile(file, report, opts = {}) {
       const line = lineOf(text, h.index);
       report.add(h.sev, `code:${h.id}`, file, line, h.msg, lineText(text, line, h.index));
     }
+  }
+
+  for (const h of matchRules([NULLED_RULE], text)) {
+    const line = lineOf(text, h.index);
+    report.add(h.sev, `code:${h.id}`, file, line, h.msg, lineText(text, line, h.index));
   }
 
   // PHP: request input stored in a variable, then passed to a code/command execution function.
@@ -132,6 +140,34 @@ export function scanFile(file, report, opts = {}) {
   }
 }
 
+// Folders a web server typically serves to the public.
+const WEBROOT = /[\\/](public|public_html|htdocs|www|wwwroot|web|html|httpdocs)[\\/]/i;
+
+// Website production settings: debug left on, placeholder keys, secrets in the public folder.
+function siteConfig(file, lower, text, report) {
+  const at = re => { const i = text.search(re); return i < 0 ? null : lineOf(text, i); };
+  if (lower === 'wp-config.php') {
+    if (/put your unique phrase here/i.test(text)) report.add('HIGH', 'site-config', file, at(/put your unique phrase here/i), 'WordPress secret keys/salts are still the placeholder — anyone can forge login cookies. Generate new ones');
+    if (/define\s*\(\s*['"]WP_DEBUG['"]\s*,\s*true/i.test(text)) report.add('MEDIUM', 'site-config', file, at(/WP_DEBUG['"]\s*,\s*true/i), 'WP_DEBUG is on — errors can reveal paths and data in production');
+    if (/define\s*\(\s*['"]WP_DEBUG_LOG['"]\s*,\s*true/i.test(text) && !/WP_DEBUG_LOG['"]\s*,\s*['"]\//i.test(text)) report.add('MEDIUM', 'site-config', file, at(/WP_DEBUG_LOG/i), 'WP_DEBUG_LOG writes wp-content/debug.log, which is publicly downloadable by default');
+    if (!/DISALLOW_FILE_EDIT['"]\s*,\s*true/i.test(text)) report.add('LOW', 'site-config', file, null, 'DISALLOW_FILE_EDIT is not set — a stolen admin login can edit PHP files from the dashboard');
+  }
+  if (/^\.env(\.(production|prod|live))?$/.test(lower)) {
+    const prod = /^\s*APP_ENV\s*=\s*["']?prod/im.test(text) || /\.(production|prod|live)$/.test(lower);
+    if (/^\s*APP_DEBUG\s*=\s*["']?true/im.test(text)) report.add(prod ? 'MEDIUM' : 'LOW', 'site-config', file, at(/^\s*APP_DEBUG\s*=/im), `APP_DEBUG=true${prod ? ' in production' : ''} — Laravel and similar frameworks show secrets and stack traces on errors`);
+  }
+  if (lower === 'settings.py' && /^\s*DEBUG\s*=\s*True\b/m.test(text)) {
+    const exposed = /ALLOWED_HOSTS\s*=\s*\[[^\]]*['"](\*|[\w-]+\.[\w.-]+)['"]/.test(text);
+    report.add(exposed ? 'MEDIUM' : 'LOW', 'site-config', file, at(/^\s*DEBUG\s*=\s*True/m), `Django DEBUG = True${exposed ? ' with public ALLOWED_HOSTS' : ''} — error pages expose settings and code`);
+  }
+  if ((lower === '.htaccess' && /^\s*Options\s+[^\n]*\+Indexes/im.test(text)) || (/\.conf$|^nginx\.conf$/.test(lower) && /^\s*autoindex\s+on\s*;/m.test(text))) {
+    report.add('LOW', 'site-config', file, at(/\+Indexes|autoindex\s+on/i), 'Directory listing is enabled — visitors can browse folders and download backups');
+  }
+  if (WEBROOT.test(file) && (/^\.env(\..+)?$/.test(lower) && !/\.(example|sample|template|dist)$/.test(lower) || /\.(sql|sql\.gz|bak|old|orig|swp)$/.test(lower) || /^(phpinfo|info)\.php$/.test(lower) || /^debug\.log$/.test(lower))) {
+    report.add(/^\.env|\.sql/.test(lower) ? 'HIGH' : 'MEDIUM', 'site-config', file, null, `${path.basename(file)} sits in a public web folder — it may be downloadable by anyone. Move it outside the web root`);
+  }
+}
+
 function scanPackageJson(file, report) {
   const pkg = readJson(file);
   if (!pkg || typeof pkg !== 'object') return;
@@ -169,6 +205,12 @@ export function scanTree(root, report, opts = {}) {
   const { skipPaths, note } = selfSkip(root);
   if (note) report.note(note);
   const stats = {};
+  // A .git folder inside a public web folder lets anyone download the full source and history.
+  for (const w of ['', 'public', 'public_html', 'htdocs', 'www', 'wwwroot', 'web', 'html', 'httpdocs']) {
+    const dir = path.join(root, w);
+    const servedRoot = w ? true : /^(public|public_html|htdocs|www|wwwroot|web|html|httpdocs)$/i.test(path.basename(root));
+    if (servedRoot && fs.existsSync(path.join(dir, '.git', 'HEAD'))) report.add('HIGH', 'site-config', path.join(dir, '.git'), null, '.git folder inside the public web root — your source code, history and any committed secrets may be downloadable');
+  }
   for (const file of walk(root, { skipDirs: skip, maxFiles: opts.maxFiles || 50000, skipPaths, skipVenvs: !opts.deep, stats })) {
     scanFile(file, report, opts);
     n++;

@@ -1,6 +1,6 @@
 {
   "name": "safeguard",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Protect yourself and your code from 2026-era scams, account takeover, infostealers and supply-chain attacks, with offline visual reports.",
   "contextFileName": "GEMINI.md",
   "mcpServers": {

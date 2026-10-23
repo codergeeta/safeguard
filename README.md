@@ -26,13 +26,15 @@ See [`threats-2026.md`](skills/safeguard/references/threats-2026.md) for the ful
 
 ## What it does
 
-| Mode | Ask Claude… | You get |
+| Mode | Ask your AI… | You get |
 |---|---|---|
 | **Scam check** | "Is this SMS / email / pop-up / call a scam?" | A verdict and a **visual card** with the red flags highlighted in the message, plus the safe way to check |
 | **Security checkup** | "Help me secure my accounts" | A guided checklist: passkeys, sessions, OAuth apps, router, backups, family code word |
 | **Dev & agent audit** | "Audit this repo / my Claude setup" | A **visual dashboard**: health score, risk by area, the attack chain each finding enables, and fixes |
 | **Vet before install** | "Is this skill / MCP server / package safe?" | A static review of the code and manifest, plus identity checks |
 | **Incident response** | "I think I've been hacked" | Steps in the right order: money, isolate, recover from a clean device, revoke sessions, rotate developer tokens, clean a hacked site |
+| **Harden my website** | "Make my website / shop safer" | Registrar and DNS lockdown, email anti-spoofing, hiding the server behind the CDN properly, CMS and plugin hygiene, headers, backups, monitoring, tripwires, plus an optional **live check** of your own domain |
+| **Prevention** | "Stop this happening again" | A **guard hook** that blocks dangerous agent actions before they run, a **pre-commit** secret block, a **GitHub Action**, and a **weekly re-check** |
 
 ## Visual reports
 
@@ -107,7 +109,8 @@ safeguard deps <folder>                 # dependencies & CI, all ecosystems
 safeguard agent --project <folder>      # AI-agent config across all major agents
 safeguard package <folder>              # vet a package / skill / MCP server / website root
 safeguard secrets <folder> --home       # plaintext secrets (values redacted)
-safeguard checkup --open                # interactive personal security checklist
+safeguard checkup --open                # interactive personal + website security checklist
+safeguard site example.com --i-own-this --open   # live check of YOUR website (online, opt-in)
 safeguard mcp                           # run the MCP server
 ```
 
@@ -115,9 +118,53 @@ Every scanner supports `--json` and exits with code `2` when HIGH findings exist
 
 ![Personal checkup page](docs/checkup.png)
 
+## For website owners
+
+`safeguard site yourdomain.com --i-own-this --open` checks your site **from the outside**, the way an attacker sees it, and produces the same visual report. It flags:
+
+- **Origin leaks around Cloudflare:** unproxied subdomains, or mail and SPF records that point at your real server.
+- **Email spoofing:** a missing or weak SPF record, or a missing or `p=none` DMARC policy.
+- **Domain takeover risks:** registrar transfer lock off, the domain about to expire, no CAA record, no DNSSEC.
+- **HTTPS problems:** an expiring or untrusted certificate, or HTTP not redirecting to HTTPS.
+- **Missing protections:** no HSTS, CSP, clickjacking protection or `nosniff`; software versions leaked in headers; cookies without Secure or HttpOnly.
+- **Files anyone can download:** `.git`, `.env`, config backups, SQL dumps, site archives, `phpinfo`, `server-status`, `debug.log`, WordPress user lists, `xmlrpc.php`. It confirms each by its content, so ordinary "not found" pages aren't reported, and it **never shows what was inside**.
+
+This is the only Safeguard feature that uses the network. It refuses to run without `--i-own-this`, sends about 30 ordinary requests to your site plus DNS, RDAP and DNSSEC lookups, and never follows redirects to other sites. Only run it on domains you own.
+
+Pair it with `safeguard scan <webroot>` for the server files: it finds `.git`, `.env` and dumps in the public folder, debug mode in production, placeholder WordPress keys, directory listing, **wp-vcd malware** and **nulled plugins**. The checkup page has a **My website** tab with a 43-step checklist. The full guide is [`website-hardening.md`](skills/safeguard/references/website-hardening.md).
+
+## Prevention: stop problems before they happen
+
+| Tool | What it does | Set up |
+|---|---|---|
+| **Agent guard** | A hook that checks every command, file read and web fetch an AI agent is about to make. It **blocks** download-and-run, credential theft, env-variable exfiltration, reverse shells, webhook/paste-site exfiltration, deleting your home folder or a drive, and force-pushing to main. It **asks first** before secret files are read (Claude Code). It fails open, so a guard bug never locks you out. | `safeguard guard --install` (Claude Code, Cursor, Gemini CLI; backs up your settings first). Test any command: `safeguard guard --check "<command>"` |
+| **Pre-commit secret block** | Stops commits that add API keys, tokens, private keys or `.env` files. Values are redacted in the message | `safeguard precommit --install` in a repo |
+| **GitHub Action** | Runs the full checkup on every push or PR, writes a job summary, annotates the files, uploads the visual report, and fails on HIGH (configurable) | See below |
+| **Weekly re-check** | Uses your OS scheduler (Task Scheduler, launchd or cron). Writes a fresh report every Monday and opens it only when something needs attention. `--site yourdomain.com` adds the live check | `safeguard schedule <folder> --apply` (prints the plan first without `--apply`) |
+| **Tripwires** | Canary tokens: fake keys and files that alert you the moment a thief touches them | Guide: [`website-hardening.md` §8](skills/safeguard/references/website-hardening.md) |
+
+```yaml
+# .github/workflows/safeguard.yml
+name: safeguard
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: codergeeta/safeguard@<commit-sha> # v1.2.0 — pin the full SHA of the release tag
+        with:
+          fail-on: high        # high | medium | low | never
+```
+
 ## Safety design
 
-- **Read-only and offline.** Scanners never execute, install, or upload anything. Reports are self-contained HTML with a Content-Security-Policy that blocks all network access.
+- **Read-only and offline.** Scanners never execute, install, or upload anything. Reports are self-contained HTML with a Content-Security-Policy that blocks all network access. The one exception is the opt-in website check (`--i-own-this`).
+- **Changes only when you ask.** The guard, pre-commit, scheduler and installer all preview first (`--dry-run`, or no `--apply`), back up what they edit, never overwrite things that aren't theirs, and uninstall cleanly.
 - **Secrets are redacted** everywhere, in the terminal and in reports.
 - **Prompt-injection aware.** Scanned content is treated as data. Text that tries to steer an AI reviewer is itself reported as a HIGH finding.
 - **No self-exemption by name.** Scans skip only this skill's own folder, matched by exact location, so a malicious skill can't hide by calling itself "safeguard".
@@ -135,7 +182,7 @@ Every scanner supports `--json` and exits with code `2` when HIGH findings exist
 node skills/safeguard/tests/run_tests.mjs
 ```
 
-The 120 tests build throwaway malicious and clean fixtures in your temp folder: hooks, MCP configs, webshells, `.pth` stealers, poisoned lockfiles for every ecosystem, workflow injections, and XSS payloads. They then check every scanner and both HTML reports against them. The suite also includes:
+The 171 tests build throwaway malicious and clean fixtures in your temp folder: hooks, MCP configs, webshells, `.pth` stealers, poisoned lockfiles for every ecosystem, workflow injections, and XSS payloads. They then check every scanner and both HTML reports against them. The suite also includes:
 
 - **Regression tests from an independent review:** realistic false positives (UI comments, `$curl`/`$apiKey`, ngrok dev origins, WordPress stubs, apps that read `OPENAI_API_KEY`), malformed lockfiles, and a performance test on a 2 MB minified bundle.
 - **Speed:** every regex is bounded, so a scan never stalls on huge single-line files.
