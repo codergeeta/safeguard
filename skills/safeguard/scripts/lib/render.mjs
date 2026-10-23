@@ -146,11 +146,11 @@ const CONTROLS = [
   { label: 'Container builds hardened', area: 'deps', test: f => f.category === 'deps:docker', applies: c => c.ecos.has('docker') },
   { label: 'Editor won\'t auto-run code', area: 'code', test: f => f.category === 'editor-autorun' },
   { label: 'Production config safe (debug off, real keys, no secrets in web root)', area: 'code', test: f => f.category === 'site-config' },
-  { label: 'No secrets, source or backups publicly downloadable', area: 'site', test: f => f.category === 'site:exposed' },
+  { label: 'No secrets, source or backups publicly downloadable', area: 'site', test: f => f.category === 'site:exposed', applies: c => !c.siteChallenged },
   { label: 'Email can\'t be spoofed (SPF + enforced DMARC)', area: 'site', test: f => f.category === 'site:email' },
   { label: 'Origin server hidden behind the proxy', area: 'site', test: f => f.category === 'site:origin' },
   { label: 'HTTPS enforced with a healthy certificate', area: 'site', test: f => f.category === 'site:tls' },
-  { label: 'Browser security headers set', area: 'site', test: f => f.category === 'site:headers' },
+  { label: 'Browser security headers set', area: 'site', test: f => f.category === 'site:headers', applies: c => !c.siteChallenged },
   { label: 'Domain locked, renewing, DNS hardened', area: 'site', test: f => f.category === 'site:domain' || f.category === 'site:dns' },
 ];
 
@@ -213,7 +213,7 @@ export function renderDashboard({ generated, target, areas, notes = [] }) {
 
   const meta = k => AREAS.reduce((n, a) => n + (Number(areas[a.id]?.meta?.[k]) || 0), 0);
   const ecos = new Set(areas.deps?.meta?.ecosystems || []);
-  const ctx = { ecos, mcp: Number(areas.agent?.meta?.mcpServers) || 0 };
+  const ctx = { ecos, mcp: Number(areas.agent?.meta?.mcpServers) || 0, siteChallenged: !!areas.site?.meta?.challenged };
   const filesScanned = Math.max(Number(areas.code?.meta?.files) || 0, Number(areas.secrets?.meta?.files) || 0);
 
   // Group findings by kind of issue.
@@ -237,9 +237,10 @@ export function renderDashboard({ generated, target, areas, notes = [] }) {
   const applicable = controls.filter(c => c.status !== 'NA');
   const passing = applicable.filter(c => c.status === 'OK');
 
-  const verdict = counts.HIGH ? { title: 'Action needed', tone: 'HIGH', line: 'Open attack paths were found. Fix the "Now" items before installing dependencies, opening this project with an AI agent, or deploying.' }
-    : counts.MEDIUM ? { title: 'Review recommended', tone: 'MEDIUM', line: 'No sign of an active compromise. Several weak spots would make an attack easier — tighten them this week.' }
-      : { title: 'No red flags found', tone: 'OK', line: 'Nothing risky matched. Keep dependencies locked, actions pinned and secrets out of files.' };
+  const siteOnly = !!areas.site && !AREAS.some(a => a.id !== 'site' && areas[a.id]);
+  const verdict = counts.HIGH ? { title: 'Action needed', tone: 'HIGH', line: siteOnly ? 'Your domain or website can be abused right now. Fix the "Now" items first — most take minutes in your DNS, email or hosting dashboard.' : 'Open attack paths were found. Fix the "Now" items before installing dependencies, opening this project with an AI agent, or deploying.' }
+    : counts.MEDIUM ? { title: 'Review recommended', tone: 'MEDIUM', line: siteOnly ? 'Nothing is openly exposed, but these gaps make an attack on your site or domain easier — tighten them this week.' : 'No sign of an active compromise. Several weak spots would make an attack easier — tighten them this week.' }
+      : { title: 'No red flags found', tone: 'OK', line: siteOnly ? 'Nothing risky was visible from the outside. Keep 2FA on your registrar and DNS, and re-check after changes.' : 'Nothing risky matched. Keep dependencies locked, actions pinned and secrets out of files.' };
   const compromiseHint = actionable.some(f => /INSTALLED known-malicious/.test(f.message) || (f.category === 'python-startup' && f.severity === 'HIGH') || f.category === 'webshell');
 
   // ----- executive summary (plain-language analysis) -----
@@ -249,7 +250,7 @@ export function renderDashboard({ generated, target, areas, notes = [] }) {
   const site = areas.site?.meta;
   const checked = [];
   if (areaRan.some(a => a.id !== 'site')) checked.push(`<b>${filesScanned.toLocaleString()} files</b>${ecos.size ? ` across <b>${[...ecos].map(e => esc(ecoNames[e] || e)).join(', ')}</b>` : ''}${ctx.mcp ? `, <b>${ctx.mcp} MCP server${ctx.mcp > 1 ? 's' : ''}</b>` : ''}`);
-  if (site) checked.push(`the live site <b>${esc(site.domain)}</b> from the outside (DNS, email authentication, TLS, headers and ${site.pathsChecked} sensitive paths)`);
+  if (site) checked.push(`the live site <b>${esc(site.domain)}</b> from the outside (DNS, email authentication, domain and TLS${site.challenged ? '; header and exposed-file checks were blocked by the site\'s bot protection' : `, headers and ${site.pathsChecked} sensitive paths`})`);
   summary.push(`Safeguard checked ${checked.join(' and ')}, and found <b>${counts.HIGH} high</b>, <b>${counts.MEDIUM} medium</b> and <b>${counts.LOW} low</b>-severity issues. <b>${passing.length} of ${applicable.length}</b> security controls pass.`);
   const urgent = sorted.filter(x => x.worst === 'HIGH');
   if (urgent.length) {
@@ -282,11 +283,11 @@ export function renderDashboard({ generated, target, areas, notes = [] }) {
   );
   if (site) coverage.push(
     ['Website', site.domain],
-    ['Behind Cloudflare', site.proxied ? 'yes' : 'no'],
+    ['Hosting / CDN', site.platform || (site.proxied ? 'Cloudflare' : '–')],
     ['Mail provider', site.mailProvider || '–'],
     ['Certificate expires in', site.certDays != null ? `${site.certDays} days` : '–'],
     ['Domain expires in', site.domainExpiresDays != null ? `${site.domainExpiresDays} days` : '–'],
-    ['Public paths probed', `${site.pathsChecked} (${site.exposedPaths} exposed)`],
+    ['Public paths probed', site.challenged ? 'blocked by bot protection' : `${site.pathsChecked} (${site.exposedPaths} exposed)`],
   );
 
   // ----- charts -----
@@ -423,7 +424,7 @@ ${compromiseHint ? '<div class="alert"><b>This machine or site may already be co
 <div class="grid g2" style="margin-top:12px"><div class="panel summary"><h2>Analysis</h2>${summary.map(p => `<p>${p}</p>`).join('')}<div class="bottom">Bottom line: ${esc(verdict.line)}</div></div>
 <div class="panel"><h2>What was checked</h2><dl class="cov" style="margin-top:12px">${coverage.map(([k, v]) => `<div><dt>${esc(k)}</dt><dd>${esc(v)}</dd></div>`).join('')}</dl><p class="muted small" style="margin-top:14px">Read-only and offline: nothing was executed from your files and nothing left this machine.</p></div></div></section>
 
-<section id="controls"><div class="sh"><h2>Security controls</h2><p class="muted small">${passing.length} of ${applicable.length} passing · N/A = not used in this project</p></div><ul class="ctls">${controlsHtml}</ul></section>
+<section id="controls"><div class="sh"><h2>Security controls</h2><p class="muted small">${passing.length} of ${applicable.length} passing · N/A = not used in this project, or could not be checked</p></div><ul class="ctls">${controlsHtml}</ul></section>
 
 <section id="charts"><div class="grid g2">
 <div class="panel"><div class="sh"><h2>Issues by area</h2></div><div class="legend">${['HIGH', 'MEDIUM', 'LOW'].map(x => chip(x)).join('')}</div>${stackedBars(areaRows)}<p class="insight">${areaInsight}</p>${tableView(['Area', 'High', 'Medium', 'Low'], areaRows.map(r => [r.label, r.skipped ? '–' : r.c.HIGH, r.skipped ? '–' : r.c.MEDIUM, r.skipped ? '–' : r.c.LOW]))}</div>

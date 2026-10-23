@@ -408,6 +408,21 @@ check('site check: missing HSTS + version leak + insecure cookie', lf('MEDIUM', 
 const siteHtml = fs.existsSync(path.join(tmp, 'site.html')) ? fs.readFileSync(path.join(tmp, 'site.html'), 'utf8') : '';
 check('site check: visual report has website area and controls', /Website \(live check\)/.test(siteHtml) && /No secrets, source or backups publicly downloadable/.test(siteHtml) && !/Agent asks before running commands/.test(siteHtml));
 
+// Bot-challenge pages (seen on a real Vercel site): report "could not check", never "clean".
+put(tmp, 'srv2.mjs', `import http from 'node:http';
+http.createServer((q, s) => { s.writeHead(403, { server: 'Vercel', 'x-vercel-id': 'bom1::x', 'x-vercel-mitigated': 'challenge', 'content-type': 'text/html' }); s.end('<html>Vercel Security Checkpoint</html>'); })
+  .listen(0, '127.0.0.1', function () { console.log('PORT ' + this.address().port); });`);
+const srv2 = spawn(process.execPath, [path.join(tmp, 'srv2.mjs')]);
+const port2 = await new Promise((res, rej) => { srv2.stdout.on('data', d => { const m = String(d).match(/PORT (\d+)/); if (m) res(m[1]); }); setTimeout(() => rej(new Error('fixture server did not start')), 10000); });
+const ch = spawnSync(process.execPath, [siteScript, 'shop.example.com', '--i-own-this', '--test-base', `http://127.0.0.1:${port2}`, '--json', '--out', path.join(tmp, 'site2.html')], { encoding: 'utf8', timeout: 120000 });
+srv2.kill();
+let chJson = { findings: [], meta: {} };
+try { chJson = JSON.parse(ch.stdout); } catch { /* reported below */ }
+const ch2 = fs.existsSync(path.join(tmp, 'site2.html')) ? fs.readFileSync(path.join(tmp, 'site2.html'), 'utf8') : '';
+check('site check: bot challenge detected and reported as "could not check"', chJson.meta.challenged === true && chJson.meta.platform === 'Vercel' && chJson.findings.some(x => /Bot protection is on: Vercel/.test(x.message)));
+check('site check: no header/exposed findings from a challenge page', !chJson.findings.some(x => /site:(headers|exposed)/.test(x.category)) && chJson.meta.pathsChecked === 0);
+check('site check: challenged controls show N/A, not Pass; website wording', /blocked by bot protection/.test(ch2) && !/Pass<\/span><span>Browser security headers set/.test(ch2) && /N\/A<\/span><span>Browser security headers set/.test(ch2) && !/installing dependencies/.test(ch2));
+
 // Guard: policy decisions, hook formats, install/uninstall with backup, fail-open.
 const guard = path.join(scripts, 'guard.mjs');
 const gchk = c => spawnSync(process.execPath, [guard, '--check', c, '--json'], { encoding: 'utf8' });

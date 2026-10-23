@@ -53,12 +53,12 @@ function inV6(ip, cidr) { const [b, bits] = cidr.split('/'); const x = expand6(i
 const isCF = ip => (ip.includes(':') ? CF6.some(c => inV6(ip, c)) : CF4.some(c => inV4(ip, c)));
 const isPrivate = ip => /^(10\.|127\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|169\.254\.|::1$|f[cd])/i.test(ip);
 
-async function http(url, { method = 'GET', max = 65536 } = {}) {
+async function http(url, { method = 'GET', max = 65536, accept = '*/*' } = {}) {
   requests++;
   const ctl = new AbortController();
   const t = setTimeout(() => ctl.abort(), TIMEOUT);
   try {
-    const res = await fetch(url, { method, redirect: 'manual', signal: ctl.signal, headers: { 'user-agent': UA, accept: '*/*' } });
+    const res = await fetch(url, { method, redirect: 'manual', signal: ctl.signal, headers: { 'user-agent': UA, accept } });
     let body = Buffer.alloc(0);
     if (method !== 'HEAD' && res.body) {
       const reader = res.body.getReader();
@@ -87,17 +87,19 @@ function certInfo(host) {
 }
 
 // ---------- 1. DNS, CDN and origin exposure ----------
+// Set by the DNS section; stay at these defaults in --test-base mode.
+let proxied = false;
+let pendingOrigin = null;
 if (!TEST) {
 const a4 = (await q('resolve4', domain)) || [];
 const a6 = (await q('resolve6', domain)) || [];
 const ips = [...a4, ...a6];
 if (!ips.length) { add('HIGH', 'dns', domain, 'Domain does not resolve — check the DNS records (or the domain may have expired)'); }
-const proxied = ips.length > 0 && ips.every(isCF);
+proxied = ips.length > 0 && ips.every(isCF);
 const cnameHint = (await q('resolveCname', domain)) || [];
-if (ips.length && !proxied) {
-  const cdnLike = cnameHint.some(c => /cloudfront|fastly|akamai|edgekey|azurefd|vercel-dns|netlify|pages\.dev|github\.io|herokudns|sucuri|stackpath|bunny|cdn/i.test(c));
-  add(cdnLike ? 'INFO' : 'LOW', 'origin', domain, cdnLike ? `Served through a CDN/platform (${cnameHint[0]})` : `Not behind a proxy/CDN: the server IP (${ips[0]}) is public. A proxy such as Cloudflare plus an origin firewall cuts bot and DDoS traffic`);
-}
+// Whether a non-Cloudflare site is on a CDN/hosting platform is decided after the homepage
+// request, from its response headers (see "platform" below), because apex records rarely CNAME.
+pendingOrigin = ips.length && !proxied ? { ip: ips[0], cname: cnameHint.find(c => /cloudfront|fastly|akamai|edgekey|azurefd|vercel-dns|netlify|pages\.dev|github\.io|herokudns|sucuri|stackpath|bunny|cdn/i.test(c)) } : null;
 report.meta.proxied = proxied;
 
 const SUBS = ['www', 'mail', 'webmail', 'smtp', 'ftp', 'cpanel', 'whm', 'direct', 'origin', 'dev', 'staging', 'test', 'admin', 'api', 'server', 'vpn', 'portal', 'old', 'beta'];
@@ -120,7 +122,15 @@ const txt = ((await q('resolveTxt', apex)) || []).map(r => r.join(''));
 const spf = txt.filter(t => /^v=spf1\b/i.test(t));
 const dmarcTxt = (((await q('resolveTxt', `_dmarc.${apex}`)) || []).map(r => r.join(''))).filter(t => /^v=DMARC1/i.test(t));
 const sendsMail = mx.length > 0;
-if (!spf.length) add(sendsMail ? 'MEDIUM' : 'MEDIUM', 'email', apex, sendsMail ? 'No SPF record — receivers can\'t tell which servers may send mail as your domain' : 'No SPF record. If this domain never sends email, publish "v=spf1 -all" so nobody can send as it');
+// Spoofable = no SPF and no enforced DMARC: forged mail "from" the domain gets delivered.
+const dmarcPolicy = ((dmarcTxt[0] || '').match(/\bp=(\w+)/i) || [])[1]?.toLowerCase();
+const spoofable = !spf.length && (!dmarcTxt.length || dmarcPolicy === 'none' || !dmarcPolicy);
+const googleMx = mx.some(m => /google\.com$|googlemail\.com$/i.test(m.exchange));
+const microsoftMx = mx.some(m => /outlook\.com$|protection\.outlook\.com$/i.test(m.exchange));
+const spfHint = googleMx ? ' For Google Workspace: v=spf1 include:_spf.google.com ~all' : microsoftMx ? ' For Microsoft 365: v=spf1 include:spf.protection.outlook.com ~all' : '';
+if (!spf.length) add(spoofable ? 'HIGH' : 'MEDIUM', 'email', apex, sendsMail
+  ? `No SPF record${spoofable ? ' and no enforced DMARC — anyone can send email that passes as your domain' : ' — receivers can\'t tell which servers may send mail as your domain'}.${spfHint}`
+  : 'No SPF record. If this domain never sends email, publish "v=spf1 -all" so nobody can send as it');
 else {
   if (spf.length > 1) add('MEDIUM', 'email', apex, `${spf.length} SPF records — only one is allowed; receivers treat this as an error`);
   const s = spf[0];
@@ -144,7 +154,7 @@ report.meta.mailProvider = mx.length ? mx.sort((x, y) => x.priority - y.priority
 // ---------- 3. Domain: CAA, DNSSEC, registrar lock, expiry ----------
 const caa = await q('resolveCaa', apex);
 if (!caa || !caa.length) add('LOW', 'dns', apex, 'No CAA record — any certificate authority may issue certificates for your domain. Add CAA naming only the CAs you use');
-const doh = await http(`https://cloudflare-dns.com/dns-query?name=${encodeURIComponent(apex)}&type=DS`, {});
+const doh = await http(`https://cloudflare-dns.com/dns-query?name=${encodeURIComponent(apex)}&type=DS`, { accept: 'application/dns-json' });
 try {
   const j = JSON.parse(doh.text);
   if (!(j.Answer || []).some(a => a.type === 43)) add('LOW', 'dns', apex, 'DNSSEC is not enabled — DNS answers for your domain can be forged on some networks. Enable it at your DNS provider and registrar');
@@ -185,7 +195,26 @@ const plain = await http(`http://${domain}/`, { max: 2048 });
 if (plain.status && !(plain.status >= 300 && plain.status < 400 && /^https:\/\//i.test(plain.headers.get('location') || ''))) add('MEDIUM', 'tls', domain, `http://${domain}/ does not redirect to HTTPS (status ${plain.status})`);
 }
 const home = await http(`${BASE}/`, { max: 131072 });
-if (home.status) {
+const hh = n => home.headers.get(n) || '';
+// Hosting platform / CDN, from response headers (apex DNS records rarely reveal it).
+const platform = /vercel/i.test(hh('server')) || hh('x-vercel-id') ? 'Vercel'
+  : hh('cf-ray') ? 'Cloudflare' : hh('x-nf-request-id') ? 'Netlify' : hh('x-amz-cf-id') ? 'Amazon CloudFront'
+    : /fastly/i.test(hh('x-served-by') + hh('via')) ? 'Fastly' : /github\.com/i.test(hh('server')) ? 'GitHub Pages'
+      : /akamai/i.test(hh('server')) ? 'Akamai' : null;
+report.meta.platform = platform || (proxied ? 'Cloudflare' : 'none detected');
+if (pendingOrigin) {
+  const hosted = ['Vercel', 'Netlify', 'GitHub Pages'].includes(platform);
+  if (hosted) add('INFO', 'origin', domain, `Hosted on ${platform}'s edge network — there is no separate origin server IP to hide`);
+  else if (platform || pendingOrigin.cname) add('INFO', 'origin', domain, `Served through ${platform || pendingOrigin.cname} — make sure the origin behind it only accepts traffic from the CDN`);
+  else add('LOW', 'origin', domain, `Not behind a proxy/CDN: the server IP (${pendingOrigin.ip}) is public. A proxy such as Cloudflare plus an origin firewall cuts bot and DDoS traffic`);
+}
+// Bot protection (Vercel/Cloudflare challenge) answers scanners with a challenge page. That is good
+// protection, but header and exposed-file results would describe the challenge page, not the site.
+const challenged = home.status >= 400 && (/challenge/i.test(hh('x-vercel-mitigated') + hh('cf-mitigated')) || /just a moment|cf-chl|challenge-platform|security checkpoint/i.test(home.text));
+report.meta.challenged = challenged;
+if (challenged) {
+  add('INFO', 'coverage', domain, `Bot protection is on: ${platform || 'the CDN'} answered automated requests with a challenge (HTTP ${home.status}). That blocks scanners and scraping bots, which is good — but the security-header and exposed-file checks could not see your real site. To complete them, allowlist your own IP in the ${platform || 'CDN'} firewall or briefly pause the challenge, then re-run`);
+} else if (home.status) {
   const h = n => home.headers.get(n);
   const csp = h('content-security-policy') || '';
   if (!h('strict-transport-security')) add('MEDIUM', 'headers', domain, 'Missing Strict-Transport-Security (HSTS) — browsers may still connect over plain HTTP first');
@@ -209,7 +238,7 @@ if (home.status) {
 
 // ---------- 5. Publicly reachable secrets, source, backups, debug pages ----------
 // A random path tells us what this site returns for "not found" so soft-404 pages aren't reported.
-const base = await http(`${BASE}/safeguard-${crypto.randomBytes(6).toString('hex')}.txt`, { max: 65536 });
+const base = challenged ? { status: 0 } : await http(`${BASE}/safeguard-${crypto.randomBytes(6).toString('hex')}.txt`, { max: 65536 });
 const baseHash = base.status === 200 ? crypto.createHash('sha1').update(base.body).digest('hex') : null;
 const notHtml = r => !/^\s*<(!doctype|html)/i.test(r.text);
 const PROBES = [
@@ -239,7 +268,7 @@ const PROBES = [
   ['/.DS_Store', 'LOW', '.DS_Store is downloadable — it lists file names in the folder', r => r.body.subarray(4, 8).toString() === 'Bud1'],
 ];
 let exposed = 0;
-for (let i = 0; i < PROBES.length; i += 4) {
+for (let i = 0; !challenged && i < PROBES.length; i += 4) {
   const batch = PROBES.slice(i, i + 4);
   const results = await Promise.all(batch.map(([p]) => http(`${BASE}${p}`)));
   batch.forEach(([p, sev, msg, ok], k) => {
@@ -251,14 +280,16 @@ for (let i = 0; i < PROBES.length; i += 4) {
     add(sev, 'exposed', `${BASE}${p}`, msg);
   });
 }
-const sec = await http(`${BASE}/.well-known/security.txt`, { max: 8192 });
-if (!(sec.status === 200 && /contact:/i.test(sec.text))) add('INFO', 'headers', domain, 'No /.well-known/security.txt — publishing one tells researchers how to report problems to you');
+if (!challenged) {
+  const sec = await http(`${BASE}/.well-known/security.txt`, { max: 8192 });
+  if (!(sec.status === 200 && /contact:/i.test(sec.text))) add('INFO', 'headers', domain, 'No /.well-known/security.txt — publishing one tells researchers how to report problems to you');
+}
 if (report.meta.wordpress) add('INFO', 'headers', domain, 'WordPress detected — see the WordPress items in the hardening guide (updates, unused plugins, DISALLOW_FILE_EDIT, PHP blocked in uploads)');
 
 report.meta.domain = domain;
 report.meta.requests = requests;
 report.meta.exposedPaths = exposed;
-report.meta.pathsChecked = PROBES.length;
+report.meta.pathsChecked = challenged ? 0 : PROBES.length;
 report.note(`${requests} HTTP request(s) made to ${domain}, rdap.org and cloudflare-dns.com, plus DNS lookups through your system resolver. No content from exposed files is shown.`);
 report.note('Outside-in checks see only what the internet sees. Pair this with `safeguard scan <webroot>` for the files on the server.');
 
