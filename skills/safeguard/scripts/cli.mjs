@@ -47,17 +47,20 @@ function mcpConfig() {
   console.log('— ChatGPT desktop / other clients: add a local (stdio) MCP server with the command and args above.');
 }
 
-const [cmd, ...rest] = process.argv.slice(2);
-if (!cmd || cmd === 'help' || cmd === '--help' || cmd === '-h') { help(); process.exit(0); }
-if (cmd === '--version' || cmd === '-v' || cmd === 'version') { console.log(VERSION); process.exit(0); }
-if (cmd === 'mcp-config') { mcpConfig(); process.exit(0); }
-if (cmd === 'prompt') {
-  const f = path.join(here, '..', 'chat', 'INSTRUCTIONS.md');
-  process.stdout.write(fs.readFileSync(f, 'utf8'));
-  console.error(`\n(Also upload the files in ${path.join(here, '..', 'references')} as knowledge, if your chat app allows.)`);
-  process.exit(0);
+// Returns the exit code; Node exits after output is flushed (process.exit() can truncate piped output).
+function main(cmd, rest) {
+  if (!cmd || cmd === 'help' || cmd === '--help' || cmd === '-h') { help(); return 0; }
+  if (cmd === '--version' || cmd === '-v' || cmd === 'version') { console.log(VERSION); return 0; }
+  if (cmd === 'mcp-config') { mcpConfig(); return 0; }
+  if (cmd === 'prompt') {
+    process.stdout.write(fs.readFileSync(path.join(here, '..', 'chat', 'INSTRUCTIONS.md'), 'utf8'));
+    console.error(`\n(Also upload the files in ${path.join(here, '..', 'references')} as knowledge, if your chat app allows.)`);
+    return 0;
+  }
+  const entry = COMMANDS[cmd];
+  if (!entry) { console.error(`Unknown command: ${cmd}\n`); help(); return 1; }
+  return spawnSync(process.execPath, [path.join(here, entry[0]), ...rest], { stdio: 'inherit' }).status ?? 1;
 }
-const entry = COMMANDS[cmd];
-if (!entry) { console.error(`Unknown command: ${cmd}\n`); help(); process.exit(1); }
-const r = spawnSync(process.execPath, [path.join(here, entry[0]), ...rest], { stdio: 'inherit' });
-process.exit(r.status ?? 1);
+
+const [cmd, ...rest] = process.argv.slice(2);
+process.exitCode = main(cmd, rest);

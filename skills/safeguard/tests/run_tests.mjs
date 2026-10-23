@@ -311,7 +311,8 @@ const rpc = [
   { jsonrpc: '2.0', id: 12, method: 'prompts/get', params: { name: 'harden_website', arguments: {} } },
 ].map(m => JSON.stringify(m)).join('\n') + '\n';
 const mcp = spawnSync(process.execPath, [path.join(scripts, 'mcp_server.mjs')], { input: rpc, encoding: 'utf8', timeout: 120000 });
-const out = Object.fromEntries((mcp.stdout || '').trim().split('\n').filter(Boolean).map(l => { const m = JSON.parse(l); return [m.id, m]; }));
+const out = Object.fromEntries((mcp.stdout || '').trim().split('\n').filter(Boolean).map((l, i) => { try { const m = JSON.parse(l); return [m.id, m]; } catch { return [`bad${i}`, null]; } }));
+check('mcp: every response arrives complete (no truncated output)', !Object.keys(out).some(k => k.startsWith('bad')) && out[12] != null);
 check('mcp: stdout is pure JSON-RPC', (mcp.stdout || '').trim().split('\n').every(l => { try { return JSON.parse(l).jsonrpc === '2.0'; } catch { return false; } }));
 check('mcp: initialize negotiates protocol + instructions', out[1]?.result?.protocolVersion === '2025-06-18' && /untrusted data/.test(out[1]?.result?.instructions || ''));
 check('mcp: 9 read-only tools listed; only site_check is open-world', out[2]?.result?.tools?.length === 9 && out[2].result.tools.every(t => t.annotations?.readOnlyHint && t.inputSchema?.type === 'object') && out[2].result.tools.filter(t => t.annotations.openWorldHint).map(t => t.name).join() === 'site_check');
@@ -331,6 +332,7 @@ const cli = c => spawnSync(process.execPath, [path.join(scripts, 'cli.mjs'), ...
 check('cli: help lists commands', /install/.test(cli(['help']).stdout) && /mcp-config/.test(cli(['help']).stdout));
 check('cli: mcp-config covers major clients', ['mcpServers', '"servers"', 'mcp_servers.safeguard', 'context_servers'].every(k => cli(['mcp-config']).stdout.includes(k)));
 check('cli: forwards exit code 2 on HIGH', cli(['deps', bad]).status === 2);
+check('cli: prompt output is complete', cli(['prompt']).stdout === fs.readFileSync(path.join(scripts, '..', 'chat', 'INSTRUCTIONS.md'), 'utf8'));
 const ck = path.join(tmp, 'checkup.html');
 spawnSync(process.execPath, [path.join(scripts, 'checkup.mjs'), '--out', ck], { encoding: 'utf8' });
 const ckHtml = fs.existsSync(ck) ? fs.readFileSync(ck, 'utf8') : '';

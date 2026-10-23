@@ -238,5 +238,7 @@ process.stdin.on('data', chunk => {
     for (const m of Array.isArray(msg) ? msg : [msg]) handle(m);
   }
 });
-process.stdin.on('end', () => process.exit(0));
+// No process.exit() here: piped stdout is asynchronous on macOS/Linux, and exiting early truncates
+// the last responses. Node exits by itself once stdin is closed and every write has flushed.
+process.stdin.on('end', () => { process.exitCode = 0; });
 console.error(`safeguard MCP server ${VERSION} ready (stdio)`);

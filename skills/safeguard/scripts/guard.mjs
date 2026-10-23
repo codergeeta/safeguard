@@ -187,9 +187,11 @@ const format = args.format || 'claude';
 let input = '';
 process.stdin.setEncoding('utf8');
 process.stdin.on('data', d => { input += d; });
+// Replies are written and then Node exits on its own (exit code 0): calling process.exit() right
+// after a write can truncate piped output, and a truncated reply would make the agent ignore it.
 process.stdin.on('end', () => {
   let ev;
-  try { ev = JSON.parse(input || '{}'); } catch { process.exit(0); } // fail open
+  try { ev = JSON.parse(input || '{}'); } catch { return; } // fail open
   let v;
   if (format === 'cursor') {
     v = ev.hook_event_name === 'beforeReadFile' || (ev.file_path && !ev.command) ? judgeRead(ev.file_path) : judgeCommand(ev.command);
@@ -198,16 +200,15 @@ process.stdin.on('end', () => {
     process.stdout.write(JSON.stringify(deny
       ? { permission: 'deny', continue: true, userMessage: `Safeguard blocked this: ${v.reason}`, agentMessage: `Blocked by Safeguard guard: ${v.reason}. Do not retry another way; ask the user.` }
       : { permission: 'allow', continue: true }));
-    process.exit(0);
+    return;
   }
   v = judgeTool(ev.tool_name, ev.tool_input || {});
   if (format === 'gemini') {
     process.stdout.write(JSON.stringify(v.decision === 'allow' ? { decision: 'allow' } : { decision: 'deny', reason: `Safeguard: ${v.reason}. Ask the user before trying another way.` }));
-    process.exit(0);
+    return;
   }
   // Claude Code PreToolUse
   if (v.decision !== 'allow') {
     process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: v.decision, permissionDecisionReason: `Safeguard: ${v.reason}` } }));
   }
-  process.exit(0);
 });
