@@ -27,3 +27,23 @@ jobs:
         run: node skills/safeguard/tests/run_tests.mjs
       - name: Dogfood - check this repo's own pipeline and manifests
         run: node skills/safeguard/scripts/check_deps.mjs .
+
+  action:
+    # Runs this repository's GitHub Action against itself, exactly as users would.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+      - id: safeguard
+        uses: ./
+        with:
+          fail-on: high
+      - name: Show outputs
+        env:
+          HEALTH: ${{ steps.safeguard.outputs.health }}
+          HIGH: ${{ steps.safeguard.outputs.high }}
+        run: echo "health=$HEALTH high=$HIGH"
