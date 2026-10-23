@@ -156,7 +156,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: codergeeta/safeguard@91626c3bdfbf0c69c950c8f1055f553c9e4a0aa6 # v1.2.1
+      - uses: codergeeta/safeguard@336d3114bc8ea9261fec1c609f5849767fc63f1b # v1.2.2
         with:
           fail-on: high        # high | medium | low | never
 ```
