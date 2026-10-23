@@ -1,6 +1,6 @@
 {
   "name": "@codergeeta/safeguard",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "Protect people and code from 2026-era scams, account takeover, infostealers and supply-chain attacks. Agent skill for 20+ AI agents, MCP server, CLI, and offline visual reports.",
   "type": "module",
   "bin": { "safeguard": "bin/safeguard.mjs" },
